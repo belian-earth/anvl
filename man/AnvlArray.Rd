@@ -73,7 +73,13 @@ nv_empty_like(
 }
 \arguments{
 \item{data}{(any)\cr
-\code{integer()}, \code{double()}, or \code{logical()} scalar, vector, or array.}
+\code{integer()}, \code{double()}, or \code{logical()} scalar, vector, or array.
+Alternatively a \code{raw()} vector holding the native little-endian byte
+payload of \code{prod(shape)} elements of \code{dtype}; both \code{dtype} and \code{shape}
+are then required, and the bytes are uploaded without conversion
+through R numeric types (only supported on the \code{"xla"} backend).
+Raw payloads are read in column-major element order, or row-major
+with \code{byrow = TRUE}.}
 
 \item{dtype}{(\code{NULL} | \code{character(1)} | \code{\link[tengen:DataType]{DataType}})\cr
 One of bool, i8, i16, i32, i64, ui8, ui16, ui32, ui64, f32, f64 or a \code{\link[tengen:DataType]{tengen::DataType}}.

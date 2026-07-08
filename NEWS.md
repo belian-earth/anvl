@@ -2,6 +2,12 @@
 
 ## Features
 
+* `nv_array()` accepts a `raw()` vector holding the native byte payload of
+  `prod(shape)` elements of `dtype` (both then required). The bytes reach the
+  device without conversion through R doubles, which also gives exact uploads
+  for unsigned dtypes. `byrow` selects row-major element order for the
+  payload. Only supported on the `"xla"` backend; the inverse direction is
+  the existing `as_raw()`.
 * `trace_fn()` gained an `optimize` argument controlling which graph
   optimization passes run on the traced graph. `TRUE` runs all passes, `FALSE`
   (default) runs none, and a character vector (e.g.

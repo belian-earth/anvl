@@ -119,7 +119,10 @@ compile_quickr <- function(f, args_flat, in_tree, arg_devices = list(), unwrap =
 #' @export
 AnvlBackendQuickr <- function() {
   backend <- AnvlBackend(
-    new_data = function(data, dtype, shape, device, ambiguous) {
+    new_data = function(data, dtype, shape, device, ambiguous, row_major = FALSE) {
+      if (is.raw(data)) {
+        cli_abort("Raw {.arg data} payloads are not supported by the {.val quickr} backend.")
+      }
       if (!is.null(device)) {
         if (is.character(device) && (device != "quickr")) {
           cli_abort("Unsupported device {.val {device}} for 'quickr' backend")

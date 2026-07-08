@@ -572,3 +572,67 @@ describe("arr", {
     expect_error(arr(1, 2, shape = "foo"))
   })
 })
+
+test_that("nv_array accepts raw byte payloads", {
+  skip_if(!is_cpu())
+  # round trip per dtype: raw -> nv_array -> as_raw is byte-identical
+  set.seed(1)
+  shp <- c(5L, 7L, 3L)
+  n <- prod(shp)
+  payloads <- list(
+    f32 = writeBin(rnorm(n), raw(), size = 4L),
+    i16 = writeBin(sample(c(-32768L, 32767L, -1234L, 0L), n, TRUE), raw(), size = 2L),
+    ui8 = as.raw(sample(0:255, n, TRUE)),
+    ui16 = writeBin(sample(c(0L, 32767L, 32768L, 65535L), n, TRUE), raw(), size = 2L),
+    i32 = writeBin(sample(c(-2147483647L, 2147483647L, 0L), n, TRUE), raw(), size = 4L)
+  )
+  for (dt in names(payloads)) {
+    x <- nv_array(payloads[[dt]], dtype = dt, shape = shp, device = "cpu")
+    expect_class(x, "AnvlArray")
+    expect_equal(shape(x), shp)
+    expect_equal(dtype(x), as_dtype(dt))
+    expect_identical(as_raw(x, row_major = FALSE), payloads[[dt]])
+  }
+})
+
+test_that("raw f32 payloads equal double uploads elementwise (NaN, signed zero)", {
+  skip_if(!is_cpu())
+  vals <- c(1.5, -0.0, 0.0, NaN, Inf, -Inf, 3.14159, -2.5e-38)
+  m <- matrix(vals, 2L, 4L)
+  x_raw <- nv_array(writeBin(as.numeric(m), raw(), size = 4L), dtype = "f32", shape = dim(m), device = "cpu")
+  x_dbl <- nv_array(m, dtype = "f32", device = "cpu")
+  expect_identical(as_array(x_raw), as_array(x_dbl))
+  # bit patterns identical, so signed zero survives too
+  expect_identical(as_raw(x_raw, row_major = FALSE), as_raw(x_dbl, row_major = FALSE))
+})
+
+test_that("raw ui16 payloads above 2^15 are exact", {
+  skip_if(!is_cpu())
+  u <- c(32768L, 40000L, 65535L, 0L)
+  x <- nv_array(writeBin(u, raw(), size = 2L), dtype = "ui16", shape = 4L, device = "cpu")
+  expect_equal(as_array(x), array(u, 4L))
+})
+
+test_that("byrow gives raw payloads row-major element order", {
+  skip_if(!is_cpu())
+  payload <- writeBin(as.numeric(1:6), raw(), size = 4L)
+  x_col <- nv_array(payload, dtype = "f32", shape = c(2L, 3L), device = "cpu")
+  x_row <- nv_array(payload, dtype = "f32", shape = c(2L, 3L), device = "cpu", byrow = TRUE)
+  expect_equal(as_array(x_col), matrix(1:6, 2L, 3L))
+  expect_equal(as_array(x_row), matrix(1:6, 2L, 3L, byrow = TRUE))
+})
+
+test_that("raw payloads require dtype and shape", {
+  skip_if(!is_cpu())
+  expect_error(nv_array(as.raw(1:4), shape = 4L, device = "cpu"), "dtype")
+  expect_error(nv_array(as.raw(1:4), dtype = "ui8", device = "cpu"), "shape")
+})
+
+test_that("raw payloads are rejected by the quickr backend and inside jit", {
+  skip_if(!is_cpu())
+  f <- jit(function() nv_array(as.raw(1:4), dtype = "ui8", shape = 4L))
+  expect_error(f(), "not supported inside")
+  skip_if_no_quickr()
+  local_backend("quickr")
+  expect_error(nv_array(as.raw(1:4), dtype = "ui8", shape = 4L), "quickr")
+})

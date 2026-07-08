@@ -23,6 +23,12 @@
 #'
 #' @param data (any)\cr
 #'   `integer()`, `double()`, or `logical()` scalar, vector, or array.
+#'   Alternatively a `raw()` vector holding the native little-endian byte
+#'   payload of `prod(shape)` elements of `dtype`; both `dtype` and `shape`
+#'   are then required, and the bytes are uploaded without conversion
+#'   through R numeric types (only supported on the `"xla"` backend).
+#'   Raw payloads are read in column-major element order, or row-major
+#'   with `byrow = TRUE`.
 #' @param dtype (`NULL` | `character(1)` | [`DataType`])\cr
 #'   One of `r stablehlo:::roxy_dtypes()` or a [`tengen::DataType`].
 #'   The default (`NULL`) uses the current backend's default dtype:
@@ -146,7 +152,16 @@ nv_array <- function(
   if (!is.null(shape)) {
     shape <- as.integer(shape)
   }
-  if (byrow) {
+  is_raw_payload <- is.raw(data)
+  if (is_raw_payload) {
+    if (is.null(dtype)) {
+      cli_abort("{.arg dtype} must be provided when {.arg data} is a raw vector.")
+    }
+    if (is.null(shape)) {
+      cli_abort("{.arg shape} must be provided when {.arg data} is a raw vector.")
+    }
+  }
+  if (byrow && !is_raw_payload) {
     fill_shape <- shape %||% (if (!is.null(dim(data))) as.integer(dim(data)) else as.integer(length(data)))
     if (length(fill_shape) >= 2L) {
       # Fill column-major into the reversed shape, then permute axes back —
@@ -159,13 +174,13 @@ nv_array <- function(
     if (!is.null(backend)) {
       cli_abort("{.arg backend} must not be specified when calling {.fn nv_array} inside {.fn jit}.")
     }
-    return(globals$backends[["plain"]]$new_data(data, dtype, shape, device, ambiguous))
+    return(globals$backends[["plain"]]$new_data(data, dtype, shape, device, ambiguous, row_major = byrow))
   }
   if (is.null(backend) && is_device(device)) {
     backend <- backend(device)
   }
   backend <- backend %||% default_backend()
-  globals$backends[[backend]]$new_data(data, dtype, shape, device, ambiguous)
+  globals$backends[[backend]]$new_data(data, dtype, shape, device, ambiguous, row_major = byrow)
 }
 
 #' @title Convert to AnvlArray
