@@ -8,6 +8,10 @@
   for unsigned dtypes. `byrow` selects row-major element order for the
   payload. Only supported on the `"xla"` backend; the inverse direction is
   the existing `as_raw()`.
+* `nv_quantile()` and `nv_median()` use a `top_k` selection instead of a full
+  sort when every requested quantile lies in the lower half of the axis
+  (float inputs). Measured ~2.3x faster on CPU for `nan_rm = TRUE` medians
+  over axes of 31-90 elements; results are unchanged.
 * `trace_fn()` gained an `optimize` argument controlling which graph
   optimization passes run on the traced graph. `TRUE` runs all passes, `FALSE`
   (default) runs none, and a character vector (e.g.

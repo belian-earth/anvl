@@ -1609,3 +1609,37 @@ test_that("nv_mod and `%%` follow base R flooring semantics across sign combos",
     1L %% -3L
   )
 })
+
+describe("nv_quantile selection fast path", {
+  # probs <= ~0.5 on floats route through top_k selection instead of a full
+  # sort; forcing the sort path via an array probs containing a high prob
+  # must give identical results.
+  it("matches the sort path on random data with NaNs", {
+    set.seed(42)
+    v <- rnorm(101)
+    v[sample(101, 30)] <- NaN
+    x <- nv_array(v)
+    for (q in c(0, 0.1, 0.25, 0.5)) {
+      for (rm in c(TRUE, FALSE)) {
+        sel <- as.numeric(as_array(nv_quantile(x, q, nan_rm = rm)))
+        srt <- as.numeric(as_array(nv_quantile(x, array(c(q, 0.99)), nan_rm = rm)))[1L]
+        expect_identical(sel, srt, info = sprintf("q = %s, nan_rm = %s", q, rm))
+      }
+    }
+  })
+  it("matches the sort path along a middle dim of a 3-D array", {
+    set.seed(1)
+    a <- array(rnorm(7 * 55 * 6), c(7, 55, 6))
+    a[sample(length(a), 500)] <- NaN
+    x <- nv_array(a)
+    sel <- as_array(nv_median(x, dim = 2L, nan_rm = TRUE))
+    srt <- as_array(nv_quantile(x, array(c(0.5, 0.99)), dim = 2L, nan_rm = TRUE))
+    expect_identical(sel, srt[1L, , ])
+    # and against the R reference
+    expect_equal(sel, apply(a, c(1, 3), median, na.rm = TRUE), tolerance = 1e-6)
+  })
+  it("integer inputs still work for low probs", {
+    x <- nv_array(c(5L, 1L, 9L, 3L), dtype = "i32")
+    expect_equal(as.numeric(as_array(nv_quantile(x, 0.25, interpolation = "lower"))), 1)
+  })
+})

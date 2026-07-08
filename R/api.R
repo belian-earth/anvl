@@ -3013,7 +3013,22 @@ nv_quantile <- function(operand, probs, dim = NULL, interpolation = "linear", na
     to_sort <- operand
     n_valid_kd <- nv_broadcast_to(nv_array_like(operand, shp[dim], shape = integer()), shp_kd)
   }
-  sorted <- prim_sort(list(to_sort), dim = dim)[[1L]]
+  # Selection fast path: every required order statistic lies in the ascending
+  # prefix [1, k_sel] with k_sel = ceil((n - 1) * max(probs)) + 1 — per-pixel
+  # n_valid <= n only ever shifts the required indices down. When that window
+  # is at most about half the axis, top_k of the negated values is ~2x
+  # cheaper than a full sort on CPU. Floats only: negation is unsafe at the
+  # integer domain edges (-INT_MIN, unsigned). With nan_rm = FALSE, NaNs rank
+  # to the front of the window instead of the back, but any slice containing
+  # NaN has its output forced to NaN below, so the gathered values never
+  # surface.
+  n_dim <- shp[dim]
+  k_sel <- as.integer(ceiling((n_dim - 1) * max(probs)) + 1)
+  sorted <- if (is_float && n_dim > 0L && k_sel <= ceiling(n_dim / 2) + 1) {
+    -nv_top_k(-to_sort, k = k_sel, dim = dim)
+  } else {
+    prim_sort(list(to_sort), dim = dim)[[1L]]
+  }
 
   # Broadcast `(K,) probs` along `dim` and `(shp_kd,) n_valid_kd` across
   # `dim` → both shaped `shp_K`, with K varying along `dim`.
