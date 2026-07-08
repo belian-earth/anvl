@@ -25,6 +25,9 @@
 
 ## Features
 
+* `nv_quantile()` and `nv_median()` select the needed order statistics with
+  `top_k` instead of a full sort when every requested quantile lies in the
+  lower half of the axis. Results are unchanged.
 * The reductions (`sum()`, `prod()`, `max()`, `min()`, `range()`, `any()`,
   `all()`) now work with multiple data inputs.
 * The default data types for floating point numbers and integers can now be

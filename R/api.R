@@ -3407,7 +3407,20 @@ nv_quantile <- function(x, probs, axis = NULL, interpolation = "linear", nan_rm 
     to_sort <- x
     n_valid_kd <- nv_broadcast_to(nv_array_like(x, shp[axis], shape = integer()), shp_kd)
   }
-  sorted <- prim_sort(list(to_sort), axis = axis)[[1L]]
+  # Selection fast path: every required order statistic lies in the ascending
+  # prefix [1, k_sel] with k_sel = ceil((n - 1) * max(probs)) + 1; per-pixel
+  # n_valid <= n only ever shifts the required indices down. When that window
+  # is at most about half the axis, top_k of the negated values is cheaper
+  # than a full sort. With nan_rm = FALSE, NaNs rank to the front of the
+  # window instead of the back, but any slice containing NaN has its output
+  # forced to NaN below, so the gathered values never surface.
+  n_axis <- shp[axis]
+  k_sel <- as.integer(ceiling((n_axis - 1) * max(probs)) + 1)
+  sorted <- if (n_axis > 0L && k_sel <= ceiling(n_axis / 2) + 1) {
+    -nv_top_k(-to_sort, k = k_sel, axis = axis)
+  } else {
+    prim_sort(list(to_sort), axis = axis)[[1L]]
+  }
 
   # Broadcast `(K,) probs` along `axis` and `(shp_kd,) n_valid_kd` across
   # `axis` → both shaped `shp_K`, with K varying along `axis`.
