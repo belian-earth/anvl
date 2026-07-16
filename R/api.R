@@ -2339,6 +2339,193 @@ nv_if <- prim_if
 #' @export
 nv_while <- prim_while
 
+#' @title Scan (Loop With Per-Step Outputs)
+#' @description
+#' Runs a fixed-length loop that threads a carry through `body` while
+#' stacking each step's output into preallocated buffers, like JAX's
+#' `lax.scan`. Built on [nv_while()] plus [prim_dynamic_slice()] /
+#' [prim_dynamic_update_slice()]; no new backend primitive.
+#'
+#' At step `t`, `body` receives the current carry and the step's slice of
+#' `xs` (taken along dimension 1, with that unit axis dropped; a 1-D leaf
+#' yields a scalar), and must return
+#' `list(carry = <same structure as init>, out = <arrays to stack>)`.
+#' The stacked `out` buffers gain a new leading axis of size `length`.
+#' @param init ([`arrayish`] | `list()`)\cr
+#'   Initial carry: a single array or a (possibly nested) named list.
+#'   Every slot must keep a fixed shape and dtype across steps.
+#' @param body (`function`)\cr
+#'   Step function `function(carry, x)` returning
+#'   `list(carry = , out = )`. `out` may be a single array, a (nested)
+#'   list of arrays, or `NULL` (loop for the carry only). Its structure
+#'   must be identical at every step. `x` is `NULL` when `xs` is `NULL`.
+#' @param xs ([`arrayish`] | `list()` | `NULL`)\cr
+#'   Per-step inputs, sliced along dimension 1. All leaves must agree on
+#'   the size of dimension 1.
+#' @param length (`integer(1)` | `NULL`)\cr
+#'   Static trip count. Required when `xs` is `NULL`; otherwise inferred
+#'   from (and checked against) dimension 1 of `xs`.
+#' @param reverse (`logical(1)`)\cr
+#'   If `TRUE`, steps run `t = length, ..., 1`; each step still reads
+#'   `xs` at position `t` and writes its output at position `t`, so a
+#'   reverse scan consumes and produces arrays in the original order.
+#' @return `list(carry = , out = )`: the final carry (same structure as
+#'   `init`) and the stacked outputs (structure of `body`'s `out`, each
+#'   leaf gaining a leading axis of size `length`).
+#' @details
+#' The trip count and all shapes are static. The first iteration is
+#' evaluated once ahead of the loop to learn the output shapes, so
+#' `body` appears twice in the traced graph. Not differentiable
+#' ([prim_while()] has no reverse rule). On the quickr backend the usual
+#' restrictions apply (dtypes f64/i32/bool, dynamic slices of rank
+#' \eqn{\le} 5).
+#' @seealso [nv_while()], [nv_cumsum()] for fixed associative scans.
+#' @examplesIf pjrt::plugins_downloaded()
+#' # cumulative sum along dim 1
+#' x <- nv_array(c(1, 2, 3, 4))
+#' nv_scan(
+#'   init = nv_scalar(0),
+#'   body = function(carry, x) list(carry = carry + x, out = carry + x),
+#'   xs = x
+#' )$out
+#' @export
+nv_scan <- function(init, body, xs = NULL, length = NULL, reverse = FALSE) {
+  force(init)
+  if (!is.function(body)) {
+    cli_abort("{.arg body} must be a function")
+  }
+  if (!is.logical(reverse) || base::length(reverse) != 1L || is.na(reverse)) {
+    cli_abort("{.arg reverse} must be TRUE or FALSE")
+  }
+
+  # -- trip count and per-step input slicing -----------------------------------
+  if (!is.null(xs)) {
+    xs <- map_tree(xs, as_anvl_array)
+    xs_flat <- flatten(xs)
+    if (!base::length(xs_flat)) {
+      cli_abort("{.arg xs} must contain at least one array")
+    }
+    lens <- vapply(xs_flat, function(x) {
+      s <- shape(x)
+      if (!base::length(s)) {
+        cli_abort("every leaf of {.arg xs} must have at least one dimension")
+      }
+      as.integer(s[[1L]])
+    }, integer(1L))
+    n <- lens[[1L]]
+    if (!all(lens == n)) {
+      cli_abort("all leaves of {.arg xs} must agree on the size of dimension 1")
+    }
+    if (!is.null(length) && as.integer(length) != n) {
+      cli_abort(
+        "{.arg length} ({as.integer(length)}) disagrees with dimension 1 of {.arg xs} ({n})"
+      )
+    }
+  } else {
+    if (is.null(length)) {
+      cli_abort("{.arg length} is required when {.arg xs} is NULL")
+    }
+    n <- as.integer(length)
+    if (is.na(n) || n < 1L) {
+      cli_abort("{.arg length} must be a positive integer")
+    }
+  }
+
+  init_tree <- build_tree(init)
+
+  # read the step-`idx` slice of every xs leaf (unit leading axis dropped)
+  read_step <- function(idx) {
+    if (is.null(xs)) {
+      return(NULL)
+    }
+    map_tree(xs, function(x) {
+      s <- shape(x)
+      starts <- c(list(idx), rep(list(nv_scalar(1L)), base::length(s) - 1L))
+      sl <- do.call(
+        prim_dynamic_slice,
+        c(list(x), starts, list(slice_sizes = as.integer(c(1L, s[-1L]))))
+      )
+      nv_reshape(sl, as.integer(s[-1L]))
+    })
+  }
+
+  check_step <- function(step) {
+    if (
+      !is.list(step) ||
+        is.null(names(step)) ||
+        !setequal(names(step), c("carry", "out")) ||
+        anyDuplicated(names(step))
+    ) {
+      cli_abort("{.arg body} must return {.code list(carry = , out = )}")
+    }
+    if (!identical(build_tree(step$carry), init_tree)) {
+      cli_abort(
+        "{.arg body} must return a carry with the same structure as {.arg init}"
+      )
+    }
+  }
+
+  # write one step's out leaves into the buffers at position `idx`
+  write_step <- function(bufs, out_leaves, idx) {
+    Map(
+      function(buf, leaf) {
+        leaf <- as_anvl_array(leaf)
+        s <- shape(leaf)
+        upd <- nv_reshape(leaf, as.integer(c(1L, s)))
+        starts <- c(list(idx), rep(list(nv_scalar(1L)), base::length(s)))
+        do.call(prim_dynamic_update_slice, c(list(buf, upd), starts))
+      },
+      bufs,
+      out_leaves
+    )
+  }
+
+  # -- peel the first step to learn the out shapes/dtypes ----------------------
+  first_i <- if (reverse) n else 1L
+  step1 <- body(init, read_step(nv_scalar(first_i)))
+  check_step(step1)
+  out_tree <- build_tree(step1$out)
+  out_flat <- flatten(step1$out)
+
+  bufs <- lapply(out_flat, function(leaf) {
+    leaf <- as_anvl_array(leaf)
+    dt <- dtype(leaf)
+    zero <- if (inherits(dt, "BooleanType")) {
+      FALSE
+    } else if (inherits(dt, "IntegerType")) {
+      0L
+    } else {
+      0
+    }
+    nv_fill(zero, shape = as.integer(c(n, shape(leaf))), dtype = dt)
+  })
+  bufs <- write_step(bufs, out_flat, nv_scalar(first_i))
+
+  if (n == 1L) {
+    return(list(carry = step1$carry, out = unflatten(out_tree, bufs)))
+  }
+
+  # -- remaining n - 1 steps as a while loop ------------------------------------
+  res <- nv_while(
+    init = list(i = nv_scalar(2L), carry = step1$carry, out = bufs),
+    cond = function(i, carry, out) i <= n,
+    body = function(i, carry, out) {
+      idx <- if (reverse) (n + 1L) - i else i
+      st <- body(carry, read_step(idx))
+      check_step(st)
+      if (!identical(build_tree(st$out), out_tree)) {
+        cli_abort("{.arg body} must emit the same {.code out} structure at every step")
+      }
+      list(
+        i = i + nv_scalar(1L),
+        carry = st$carry,
+        out = write_step(out, flatten(st$out), idx)
+      )
+    }
+  )
+  list(carry = res$carry, out = unflatten(out_tree, res$out))
+}
+
 ## Additional math functions ---------------------------------------------------
 
 #' @title Base-2 Logarithm
