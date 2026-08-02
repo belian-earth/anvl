@@ -44,7 +44,7 @@ tengen::device
 #'
 #' @description
 #' Transfers array data to R and returns it as an R [`array`].
-#' Only in the case of scalars is the result a vector of length 1, as R `arrays` cannot have 0 dimensions.
+#' Only in the case of scalars is the result a vector of length 1, as R `arrays` cannot have 0 axes.
 #'
 #' @details
 #' This is implemented via the generic [`tengen::as_array()`].
@@ -57,7 +57,7 @@ tengen::device
 #' x <- nv_array(1:4, dtype = "f32")
 #' as_array(x)
 #' y <- nv_scalar(1L)
-#' # R arrays can't have 0 dimensions:
+#' # R arrays can't have 0 axes:
 #' as_array(y)
 #' @name as_array
 NULL
@@ -114,25 +114,25 @@ NULL
 #' @export
 tengen::dtype
 
-#' @title Get the number of dimensions of an array
+#' @title Get the number of axes of an array
 #'
-#' @description Returns the number of dimensions (sometimes also refered to as rank) of an array.
+#' @description Returns the number of axes (sometimes also refered to as rank) of an array.
 #' Equivalent to `length(shape(x))`.
 #'
 #' @param x ([`arrayish`])\cr
 #'   An array-like object.
 #' @returns `integer(1)`
-#' @seealso [tengen::ndims()]
-#' @name ndims
+#' @seealso [tengen::naxes()]
+#' @name naxes
 #' @examplesIf pjrt::plugins_downloaded()
 #' x <- nv_array(1:4, dtype = "f32")
-#' ndims(x)
+#' naxes(x)
 NULL
 
-#' @rdname ndims
-#' @importFrom tengen ndims
+#' @rdname naxes
+#' @importFrom tengen naxes
 #' @export
-tengen::ndims
+tengen::naxes
 
 #' @title Check if an object is a DataType
 #'
@@ -247,3 +247,31 @@ NULL
 #' @importFrom pjrt await
 #' @export
 pjrt::await
+
+#' @importFrom pjrt flatten
+#' @export
+pjrt::flatten
+
+#' @importFrom pjrt build_tree
+#' @export
+pjrt::build_tree
+
+#' @importFrom pjrt unflatten
+#' @export
+pjrt::unflatten
+
+#' @importFrom pjrt tree_size
+#' @export
+pjrt::tree_size
+
+#' @importFrom pjrt tree_path
+#' @export
+pjrt::tree_path
+
+#' @importFrom pjrt map_tree
+#' @export
+pjrt::map_tree
+
+#' @importFrom pjrt pmap_tree
+#' @export
+pjrt::pmap_tree

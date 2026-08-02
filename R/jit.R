@@ -5,8 +5,7 @@
 #' @description
 #' Wraps a function so that it is traced and compiled on first call. Subsequent
 #' calls with the same input structure, shapes, and dtypes hit an LRU cache and
-#' skip recompilation. Unlike [`xla()`], the compiled executable is not created
-#' eagerly but lazily on the first invocation.
+#' skip recompilation.
 #'
 #' @param f (`function`)\cr
 #'   Function to compile. Must accept and return [`AnvlArray`]s (and/or
@@ -15,10 +14,17 @@
 #'   Names or positions of parameters of `f` that are *not* arrays. Static values are
 #'   embedded as constants in the compiled program; a new compilation is triggered whenever
 #'   a static value changes. For example useful when you want R control flow in your function.
+#'
+#'   Note that the values that are passed to static arguments must not have reference semantics.
+#'   Such a value can be mutated in place while the cache key stays equal, which
+#'   would silently reuse a program compiled from its old contents.
+#'   One exception are closures, but there you need to ensure that their
+#'   enclosing environment does not change in a way that modifies their behavior.
+#'
 #' @param cache_size (`integer(1)`)\cr
 #'   Maximum number of compiled executables to keep in the LRU cache.
 #' @param backend (`NULL` |  `character(1)`)\cr
-#'   Compilation backend (e.g. `"xla"`, `"quickr"`).
+#'   Compilation backend (e.g. `"pjrt"`, `"quickr"`).
 #'   The special value `"auto"` defers backend selection to call-time.
 #'   `NULL` (default) respects `device` and otherwise falls back to [`default_backend()`].
 #' @param device (`NULL` | `character(1)` | [`nv_device`] | `device_arg()`)\cr
@@ -32,10 +38,10 @@
 #'   dynamic inputs such as constant creation), set `device = device_arg("<arg>")`.
 #'
 #' @param ... Backend-specific options. Passing an option that is not supported
-#'   by the selected backend raises an error. See the **XLA JIT arguments** and
+#'   by the selected backend raises an error. See the **PJRT JIT arguments** and
 #'   **Quickr JIT arguments** sections below for the options accepted by each
 #'   backend.
-#' @inheritSection AnvlBackendXla XLA JIT arguments
+#' @inheritSection AnvlBackendPjrt PJRT JIT arguments
 #' @inheritSection AnvlBackendQuickr Quickr JIT arguments
 #'
 #' @section Device and Backend selection:
@@ -82,7 +88,7 @@
 #' @return A `JitFunction` (a `function` with the same formals as `f`).
 #'   The returned wrapper expects [`AnvlArray`] inputs and returns
 #'   [`AnvlArray`] values.
-#' @seealso [`xla()`] for ahead-of-time compilation, [`jit_eval()`] for evaluating an expression once,
+#' @seealso [`jit_eval()`] for evaluating an expression once,
 #'   [`jit_roclet()`] for the `@jit` tag used inside R packages.
 #' @export
 #' @examplesIf pjrt::plugins_downloaded()
@@ -140,14 +146,16 @@ jit <- function(
 }
 
 jit_with_backend <- function(f, static, cache_size, backend, ...) {
-  cache <- xlamisc::LRUCache$new(cache_size)
   assert_backend(backend)
   assert_subset(static, formalArgs2(f))
 
-  f_jit <- globals$backends[[backend]]$jit(f, static, cache, ...)
+  f_jit <- globals$backends[[backend]]$jit(f, static, cache_size, ...)
+  # setting formals() rebuilds the function, so pick up the fast entry first
+  run <- attr(f_jit, "jit_run_args")
   formals(f_jit) <- formals2(f)
   class(f_jit) <- "JitFunction"
   attr(f_jit, "backend") <- backend
+  attr(f_jit, "jit_run_args") <- run
   f_jit
 }
 
@@ -172,7 +180,7 @@ jit_with_backend <- function(f, static, cache_size, backend, ...) {
 #' @examplesIf pjrt::plugins_downloaded("cpu")
 #' f <- function(x) nv_scalar(1, device = x)
 #' g <- jit(f, backend = "auto", device = device_arg("x"))
-#' g(nv_device("cpu", "xla"))
+#' g(nv_device("cpu", "pjrt"))
 device_arg <- function(argname) {
   assert_string(argname)
   structure(list(argname = argname), class = "AnvlDeviceArg")
@@ -210,8 +218,9 @@ jit_auto <- function(f, static, cache_size, device = NULL, device_argname = NULL
   if (is_device(device)) {
     cli_abort("Internal error: jit_auto called with a concrete device; backend should have been pinned.")
   }
-  # Lazily create per-backend jit functions
+  # Lazily create per-backend jit functions (+ their evaluated-args fast entry)
   jit_fns <- list()
+  jit_runs <- list()
   dots <- list(...)
   if (!is.null(device_argname)) {
     assert_subset(device_argname, formalArgs2(f))
@@ -231,23 +240,34 @@ jit_auto <- function(f, static, cache_size, device = NULL, device_argname = NULL
       dev_val <- args[[device_argname]]
       if (is.character(dev_val)) default_backend() else backend(dev_val)
     } else {
-      jit_auto_detect_backend(flatten(args[!names(args) %in% static]))
+      jit_auto_detect_backend(args, static)
     }
-    if (is.null(jit_fns[[be]])) {
-      jit_fns[[be]] <<- do.call(
-        jit_with_backend,
-        c(
-          list(f = f, static = static, cache_size = cache_size, backend = be),
-          if (!is.null(device_argname)) {
-            list(device = device_arg(device_argname))
-          } else if (!is.null(device)) {
-            list(device = device)
-          },
-          dots
+    run <- jit_runs[[be]]
+    if (is.null(run)) {
+      if (is.null(jit_fns[[be]])) {
+        jit_fns[[be]] <<- do.call(
+          jit_with_backend,
+          c(
+            list(f = f, static = static, cache_size = cache_size, backend = be),
+            if (!is.null(device_argname)) {
+              list(device = device_arg(device_argname))
+            } else if (!is.null(device)) {
+              list(device = device)
+            },
+            dots
+          )
         )
-      )
+      }
+      run <- attr(jit_fns[[be]], "jit_run_args")
+      if (is.null(run)) {
+        # backend without a fast entry: call the JitFunction the generic way
+        run <- function(args) do.call(jit_fns[[be]], args)
+      }
+      jit_runs[[be]] <<- run
     }
-    do.call(jit_fns[[be]], args)
+    # The args are already evaluated; the fast entry skips the inner
+    # closure's match.call() + eval() re-capture (and do.call()).
+    run(args)
   }
   formals(wrapper) <- formals2(f)
   class(wrapper) <- "JitFunction"
@@ -255,145 +275,159 @@ jit_auto <- function(f, static, cache_size, device = NULL, device_argname = NULL
   wrapper
 }
 
-jit_auto_detect_backend <- function(args_flat) {
-  backends <- vapply(
-    args_flat,
-    function(x) if (is_anvl_array(x)) backend(x) else NA_character_,
-    character(1)
-  )
-  found <- setdiff(unique(backends), c(NA_character_, "plain"))
-  if (length(found) > 1L) {
-    cli_abort(c(
-      "Cannot auto-detect backend: inputs use multiple backends.",
-      i = "Found backends: {.val {found}}",
-      i = "Pass {.code backend =} to {.fn jit} or convert inputs to a common backend."
-    ))
-  }
-  if (length(found) == 1L) {
-    return(found)
-  }
-  default_backend()
-}
-
-jit_prepare_call <- function(call, eval_env, static, device = NULL, backend) {
-  assert_choice(backend, c("xla", "quickr"))
-  args <- as.list(call)[-1L]
-  args <- lapply(args, eval, envir = eval_env)
-
-  in_tree <- build_tree(mark_some(args, static))
-  args_flat <- flatten(args)
-  is_static_flat <- in_tree$marked
-  in_tree$marked <- NULL
-  class(in_tree) <- c("ListNode", "Node")
-
-  # Resolve device: device_arg() → extract from args, string/device → nv_device(),
-  # NULL → infer from inputs, then fall back to PJRT_PLATFORM default.
-  if (is_device_arg(device)) {
-    device <- args[[device$argname]]
-  }
-
-  # Determine allocation device:
-  # if device is specified -> use it
-  # else, use first found device; if no device was found, leave it at NULL and don't check
-  # device (will be inferred during tracing)
-  allocation_device <- if (is.null(device)) {
-    found_device <- NULL
-    # If any input lives on a device, use it instead
-    for (i in seq_along(args_flat)) {
-      if (!is_static_flat[[i]] && is_anvl_array(args_flat[[i]])) {
-        found_device <- device(args_flat[[i]])
-        break
+# Determine the backend from a call's (already evaluated) arguments: the single
+# non-"plain" backend among the AnvlArray leaves, or default_backend() if none.
+# A direct short-circuiting scan that reads `$backend` as a field -- this is on
+# the hot eager-dispatch path, so it avoids flatten()/vapply()/unique()/`%in%`.
+jit_auto_detect_backend <- function(args, static = character()) {
+  found <- NA_character_
+  scan <- function(x) {
+    if (is_anvl_array(x)) {
+      b <- x$backend
+      if (!identical(b, "plain")) {
+        if (is.na(found)) {
+          found <<- b
+        } else if (!identical(found, b)) {
+          cli_abort(c(
+            "Cannot auto-detect backend: inputs use multiple backends.",
+            i = "Found backends: {.val {c(found, b)}}",
+            i = "Pass {.code backend =} to {.fn jit} or convert inputs to a common backend."
+          ))
+        }
+      }
+    } else if (is.list(x) && !is.object(x)) {
+      for (el in x) {
+        scan(el)
       }
     }
-    found_device
-  } else {
-    device
   }
+  if (length(static) == 0L) {
+    for (a in args) {
+      scan(a)
+    }
+  } else {
+    nm <- rlang::names2(args)
+    for (i in seq_along(args)) {
+      if (!(nm[[i]] %in% static)) scan(args[[i]])
+    }
+  }
+  if (is.na(found)) default_backend() else found
+}
 
-  # whether we are copying between devices. This happens when specific device was specified in jit()
-  copy_to_device <- !is.null(device)
 
+# The flat argument list a compile callback traces with, built from the `info`
+# pjrt's dispatcher hands it: a static leaf traces as its value, a dynamic one
+# as the aval the dispatcher already derived. There is deliberately no
+# classification here -- the dtype and shape below are the ones the cache key
+# was built from, so the program we compile cannot disagree with the key it is
+# filed under.
+avals_from_dispatch <- function(info) {
   .mapply(
-    function(x, is_static, i) if (is_static) x else check_jit_input(x, allocation_device, in_tree, i, copy_to_device),
-    list(args_flat, is_static_flat, seq_along(args_flat)),
+    function(leaf, is_static, av) {
+      if (is_static) {
+        return(leaf)
+      }
+      nv_aval(as_dtype(av$dtype), av$shape, av$ambiguous)
+    },
+    list(info$leaves, info$is_static, info$avals),
     NULL
   )
-
-  list(
-    args = args,
-    args_flat = args_flat,
-    is_static_flat = is_static_flat,
-    in_tree = in_tree,
-    device = allocation_device
-  )
 }
 
-to_avals <- function(args_flat, is_static_flat) {
-  Map(
-    function(x, is_static) {
-      if (is_static) {
-        x
-      } else if (is_anvl_array(x)) {
-        nv_aval(dtype(x), shape(x), ambiguous(x))
-      } else if (is_valid_r_lit(x)) {
-        nv_aval(default_dtype(x), integer(), ambiguous = TRUE)
-      } else if (is_valid_r_array(x)) {
-        nv_aval(default_dtype(x), as.integer(dim(x)), ambiguous = TRUE)
-      } else {
-        cli_abort("internal error: invalid input type for jit: {.cls {class(x)[1L]}}")
-      }
-    },
-    args_flat,
-    is_static_flat
-  )
+# Reject static arguments with reference semantics, before their values are
+# traced into a program.
+#
+# A static value is part of the executable-cache key: the dispatcher keeps the
+# value and compares later calls against it with identical(). That is only
+# sound while the value's content cannot change behind its identity. An
+# environment or an external pointer can be mutated in place, leaving the key
+# equal to one whose program was compiled from different contents -- a silently
+# stale result rather than an error. So they are rejected here, at the first
+# use of the value (the cache miss that traces it).
+#
+# Called with the call's argument list, which `match.call()` has named, and the
+# jit's static argument names.
+check_static_args <- function(args, static) {
+  for (nm in intersect(rlang::names2(args), static)) {
+    check_static_value(args[[nm]], nm)
+  }
+  invisible(NULL)
 }
 
-# Check whether an input to jit is valid (w.r.t. information available before tracing)
-# We don't convert yet as the concrete device is only known after tracing (respecting found constant's device)
-# in_tree and i are only used for good error messages
-check_jit_input <- function(x, alloc_device, in_tree = NULL, i = NULL, copy_to_device) {
-  make_path <- function() {
-    if (!is.null(in_tree) && !is.null(i)) tree_path(in_tree, i) else ""
+# Walk one static value, erroring on the first reference-semantics part of it.
+# `path` is how that part is spelled from the argument, e.g. `opts$env`.
+#
+# Lists are walked because pjrt flattens a static list into one key leaf per
+# element, so an environment inside one is keyed -- and goes stale -- exactly
+# like a bare one. Attributes are not walked: they carry metadata rather than
+# values the trace reads, and a formula's `.Environment` would make every
+# static formula an error.
+check_static_value <- function(x, path) {
+  # The one reference-like static anvl passes itself (`jit(device = ...)`,
+  # `device_arg()`): a device is an immutable, interned handle, so its identity
+  # is its value.
+  if (is_device(x)) {
+    return(invisible(NULL))
   }
-  if (is_anvl_array(x)) {
-    # only single device currently
-    if (backend(x) == "quickr") {
-      return(x)
-    }
-    # there any input is valid as we will move it to it
-    if (copy_to_device) {
-      return(x)
-    }
-
-    # allocation device can be NULL if e.g. all inputs are R objects and no concrete device
-    # was enforced in jit()
-    if (!is.null(alloc_device) && !eq_device(device(x), alloc_device)) {
-      # this can happen when there are multiple input devices but we are auto-detecting device
-      path <- make_path()
-      cli_abort(c(
-        "Found AnvlArray input {.arg {path}} on unexpected device {device(x)}",
-        i = "when using jit(f, device = NULL), ensure that all inputs live on the same device"
-      ))
-    }
-
-    return(x)
+  kind <- reference_kind(x)
+  if (!is.null(kind)) {
+    cli_abort(
+      c(
+        "Static argument {.code {path}} has reference semantics: it is {kind}.",
+        x = "A static value is part of the compilation cache key and is compared by identity,
+             so mutating it in place would silently reuse a program compiled from its old contents.",
+        i = "Pass it as a regular argument, or extract the plain values you need from it."
+      ),
+      call = NULL
+    )
   }
-
-  if (is_valid_r(x)) {
-    return(x)
+  if (typeof(x) == "list") {
+    nms <- rlang::names2(x)
+    # .subset2() rather than `[[`: a classed static list must not get to decide
+    # via a method of its own what its elements are.
+    for (i in seq_along(x)) {
+      check_static_value(.subset2(x, i), static_path(path, nms[[i]], i))
+    }
   }
-  path <- make_path()
-  msg <- if (nzchar(path)) {
-    "Attempted to autoconvert {.arg {path}} to an {.cls AnvlArray}."
+  invisible(NULL)
+}
+
+# A human description of `x`'s reference semantics, or NULL if it has none.
+# Only R's own reference types are detected: a value-semantics object that some
+# package mutates in place through C (a data.table, say) is indistinguishable
+# from a plain list here.
+reference_kind <- function(x) {
+  what <- if (is.environment(x)) {
+    "an environment"
+  } else if (typeof(x) == "externalptr") {
+    "an external pointer"
   } else {
-    "Attempted to autoconvert input to an {.cls AnvlArray}."
+    return(NULL)
   }
-  cli_abort(c(
-    msg,
-    i = "Expected an {.cls AnvlArray}, a length-1 atomic scalar, or an {.code is.array()} value.",
-    x = "Got {.cls {class(x)[1]}} of length {length(x)}."
-  ))
+  if (is.object(x)) {
+    sprintf("an object of class <%s> (%s)", class(x)[[1L]], what)
+  } else {
+    what
+  }
 }
+
+static_path <- function(path, name, i) {
+  if (!nzchar(name)) {
+    sprintf("%s[[%i]]", path, i)
+  } else if (identical(make.names(name), name)) {
+    sprintf("%s$%s", path, name)
+  } else {
+    sprintf("%s[[\"%s\"]]", path, name)
+  }
+}
+
+# The devices of the call's array inputs, for compile_pjrt()'s device inference.
+# pjrt has already checked they agree; this only converts them to anvl devices.
+dispatch_arg_devices <- function(info) {
+  is_array <- !info$is_static & vapply(info$leaves, is_anvl_array, logical(1))
+  lapply(info$leaves[is_array], tengen::device)
+}
+
 
 jit_wrap_outputs <- function(out_flat, out_tree, ambiguous_out, backend) {
   if (!is.null(ambiguous_out)) {
@@ -414,7 +448,7 @@ jit_wrap_outputs <- function(out_flat, out_tree, ambiguous_out, backend) {
 #' @param expr (NSE)\cr
 #'   Expression to compile and evaluate.
 #' @param ... Backend-specific options forwarded to [`jit()`] (e.g. `device`
-#'   for the `"xla"` backend, `unwrap` for the `"quickr"` backend).
+#'   for the `"pjrt"` backend, `unwrap` for the `"quickr"` backend).
 #' @return (`any`)\cr
 #'   Result of the compiled and evaluated expression.
 #' @export

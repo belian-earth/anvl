@@ -2,7 +2,7 @@
 #'
 #' @param new_data (`function`)\cr Constructs an AnvlArray from R data.
 #' This should be a `structure()` with at least a `$data` field that contains the actual
-#' underlying data (`PJRTBuffer` for `"xla"` backend, `array()` for `"quickr"` backend).
+#' underlying data (`PJRTBuffer` for `"pjrt"` backend, `array()` for `"quickr"` backend).
 #' Receives `row_major` (`logical(1)`, default `FALSE`), which gives the
 #' element order of raw byte payloads; backends that do not support raw
 #' `data` should abort on it.
@@ -183,7 +183,7 @@ register_backend(
       print(x$data)
       cat(footer, "\n")
     },
-    jit = function(f, static, cache, ...) {
+    jit = function(f, static, cache_size, ...) {
       cli_abort("JIT compilation is not supported for the {.val plain} backend.")
     },
     await_data = function(x) invisible(NULL)
@@ -192,13 +192,13 @@ register_backend(
 
 #' Get the default backend
 #'
-#' Returns the current default backend from `getOption("anvl.default_backend", "xla")`.
+#' Returns the current default backend from `getOption("anvl.default_backend", "pjrt")`.
 #'
-#' @return `character(1)` — the backend name (e.g. `"xla"`, `"quickr"`).
+#' @return `character(1)` — the backend name (e.g. `"pjrt"`, `"quickr"`).
 #' @seealso [local_backend()]
 #' @export
 default_backend <- function() {
-  getOption("anvl.default_backend", "xla")
+  getOption("anvl.default_backend", "pjrt")
 }
 
 assert_backend <- function(backend) {
@@ -211,7 +211,7 @@ assert_backend <- function(backend) {
 #' calling scope. This affects `nv_array()`, `nv_scalar()`, and `jit()`.
 #'
 #' @param backend (`character(1)`)\cr
-#'   Backend to use (`"xla"` or `"quickr"`).
+#'   Backend to use (`"pjrt"` or `"quickr"`).
 #' @param envir The environment to scope the change to.
 #' @return The previous value of the option (invisibly).
 #' @export
@@ -226,7 +226,7 @@ local_backend <- function(backend, envir = parent.frame()) {
 #' expression. This affects [`jit()`] and data construction (e.g. via [`nv_array`]).
 #'
 #' @param backend (`character(1)`)\cr
-#'   Backend to use (`"xla"` or `"quickr"`).
+#'   Backend to use (`"pjrt"` or `"quickr"`).
 #' @param code An expression to evaluate with the given backend.
 #' @return The result of evaluating `code`.
 #' @export

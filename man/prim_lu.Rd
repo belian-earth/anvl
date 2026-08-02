@@ -4,11 +4,11 @@
 \alias{prim_lu}
 \title{Primitive LU Decomposition}
 \usage{
-prim_lu(operand)
+prim_lu(x)
 }
 \arguments{
-\item{operand}{(\code{\link{arrayish}})\cr
-Matrix of data type floating-point with exactly 2 dimensions.}
+\item{x}{(\code{\link{arrayish}})\cr
+Matrix of data type floating-point with exactly 2 axes.}
 }
 \value{
 \code{list} of three \code{\link{arrayish}} values: \code{LU} \verb{(m, n)} with the same
@@ -19,7 +19,7 @@ with row \code{pivots[i]} during elimination step \code{i}); and \code{permutati
 that \code{(P \%*\% A)[i, ]} equals \code{A[permutation[i], ]}.
 }
 \description{
-Computes the partial-pivoted LU decomposition of a matrix \code{operand}:
+Computes the partial-pivoted LU decomposition of a matrix \code{x}:
 \deqn{P A = L U,}
 where \eqn{P} is a permutation matrix, \eqn{L} is unit lower triangular,
 and \eqn{U} is upper triangular. \code{L} (with implicit unit diagonal) and
