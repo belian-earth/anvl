@@ -2482,7 +2482,7 @@ nv_scan <- function(init, body, xs = NULL, length = NULL, reverse = FALSE) {
     ) {
       cli_abort("{.arg body} must return {.code list(carry = , out = )}")
     }
-    if (!identical(build_tree(step$carry), init_tree)) {
+    if (!pjrt::tree_equal(build_tree(step$carry), init_tree)) {
       cli_abort(
         "{.arg body} must return a carry with the same structure as {.arg init}"
       )
@@ -2537,7 +2537,7 @@ nv_scan <- function(init, body, xs = NULL, length = NULL, reverse = FALSE) {
       idx <- if (reverse) (n + 1L) - i else i
       st <- body(carry, read_step(idx))
       check_step(st)
-      if (!identical(build_tree(st$out), out_tree)) {
+      if (!pjrt::tree_equal(build_tree(st$out), out_tree)) {
         cli_abort("{.arg body} must emit the same {.code out} structure at every step")
       }
       list(
