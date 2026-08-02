@@ -21,13 +21,19 @@ static arguments).}
 \item{static}{(\code{character()} | \code{integer()})\cr
 Names or positions of parameters of \code{f} that are \emph{not} arrays. Static values are
 embedded as constants in the compiled program; a new compilation is triggered whenever
-a static value changes. For example useful when you want R control flow in your function.}
+a static value changes. For example useful when you want R control flow in your function.
+
+Note that the values that are passed to static arguments must not have reference semantics.
+Such a value can be mutated in place while the cache key stays equal, which
+would silently reuse a program compiled from its old contents.
+One exception are closures, but there you need to ensure that their
+enclosing environment does not change in a way that modifies their behavior.}
 
 \item{cache_size}{(\code{integer(1)})\cr
 Maximum number of compiled executables to keep in the LRU cache.}
 
 \item{backend}{(\code{NULL} |  \code{character(1)})\cr
-Compilation backend (e.g. \code{"xla"}, \code{"quickr"}).
+Compilation backend (e.g. \code{"pjrt"}, \code{"quickr"}).
 The special value \code{"auto"} defers backend selection to call-time.
 \code{NULL} (default) respects \code{device} and otherwise falls back to \code{\link[=default_backend]{default_backend()}}.}
 
@@ -42,7 +48,7 @@ In order to use dynamic device selection with the \code{"auto"} backend (e.g. fo
 dynamic inputs such as constant creation), set \code{device = device_arg("<arg>")}.}
 
 \item{...}{Backend-specific options. Passing an option that is not supported
-by the selected backend raises an error. See the \strong{XLA JIT arguments} and
+by the selected backend raises an error. See the \strong{PJRT JIT arguments} and
 \strong{Quickr JIT arguments} sections below for the options accepted by each
 backend.}
 }
@@ -54,8 +60,7 @@ The returned wrapper expects \code{\link{AnvlArray}} inputs and returns
 \description{
 Wraps a function so that it is traced and compiled on first call. Subsequent
 calls with the same input structure, shapes, and dtypes hit an LRU cache and
-skip recompilation. Unlike \code{\link[=xla]{xla()}}, the compiled executable is not created
-eagerly but lazily on the first invocation.
+skip recompilation.
 }
 \section{Device and Backend selection}{
 
@@ -101,7 +106,7 @@ See \code{\link[=jit_roclet]{jit_roclet()}} for the one-time setup of the roclet
 package.
 }
 
-\section{XLA JIT arguments}{
+\section{PJRT JIT arguments}{
 
 \itemize{
 \item \code{donate} (\code{character()}, default \code{character()}): names of arguments whose
@@ -142,6 +147,6 @@ with_backend("quickr", {
 \dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=xla]{xla()}} for ahead-of-time compilation, \code{\link[=jit_eval]{jit_eval()}} for evaluating an expression once,
+\code{\link[=jit_eval]{jit_eval()}} for evaluating an expression once,
 \code{\link[=jit_roclet]{jit_roclet()}} for the \verb{@jit} tag used inside R packages.
 }

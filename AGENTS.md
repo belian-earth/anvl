@@ -3,7 +3,7 @@
 ## Package Overview
 
 `anvl` is a code transformation framework for R, similar to JAX.
-It provides JIT compilation (`jit()`, `xla()`) and automatic differentiation (`gradient()`, `value_and_gradient()`).
+It provides JIT compilation (`jit()`) and automatic differentiation (`gradient()`, `value_and_gradient()`).
 
 ## Two-Layer API
 
@@ -13,6 +13,14 @@ It provides JIT compilation (`jit()`, `xla()`) and automatic differentiation (`g
 When adding new functionality, decide which layer it belongs to. Most new operations need both: a `prim_*` primitive with rules, and an `nv_*` wrapper with R-idiomatic semantics.
 
 Inside `nv_*` API functions, pass plain R literals (e.g. `0`, `1`, `NaN`) directly to primitives instead of wrapping them in `nv_scalar()` / `nv_scalar_like()`.
+
+## Terminology
+
+- **Axis, axis size, shape.** An *axis* is an index that identifies a direction of an array; the *size* of that axis (its *axis size*) is the extent along it; the *shape* is the vector of all axis sizes. For a `20x5x3` array the axes are `1`, `2`, `3` and the shape is `c(20, 5, 3)`, so the size of axis `1` is `20`. Name identifiers accordingly: use `axis`/`axes` when the value is an index (or vector of indices) and `shape` for the vector of sizes; for a single size use an *axis size* name (e.g. `axis_size`, `n`). Helpers reflect this: `naxes(x)` is the number of axes (the rank), so `seq_len(naxes(x))` is the axis indices, and `shape(x)` returns the axis sizes.
+- **Don't use "dim"/"dimension" for anvl concepts.** We don't speak of an array's "dimensions" or name size-valued identifiers `dim`/`dims` — say *axis size* (a single size) or *shape* (the vector) instead. `dim`/`dimensions` is reserved for foreign call boundaries only (next point).
+- Speak of the **size of an axis**, never the "length of an axis" (reserve "length" for vectors and 1-D arrays).
+- Keep the foreign spelling at call boundaries: stablehlo, torch, and base R speak of "dimensions", so calls into them keep those argument names (e.g. `hlo_reduce(dimensions = axes - 1L)`, `array(dim = ...)`) with the anvl-side axis variable on the right.
+- **Arrays, not tensors.** In anvl-facing docs, messages, and identifiers, say *array* rather than *tensor*. The primary array argument of `nv_*` / `prim_*` functions is called `x`.
 
 ## Supported dtypes
 
@@ -30,7 +38,7 @@ Primitives are `JitPrimitive` callables constructed by `new_primitive()` (define
 
 Anvl's elementwise binary operators (`+`, `-`, `*`, `/`, `nv_add`, `nv_mul`, …) only **auto-broadcast scalars** — i.e. operands with `shape = integer()`. They do **not** do general numpy-style broadcasting; mixing two non-scalar arrays of different (but broadcastable) shapes raises `nv_broadcast_scalars()` errors like *"All non-scalar arrays must have the same shape, ... Use `nv_broadcast_arrays()` for general broadcasting."*
 
-When two non-scalar arrays need to be combined and only differ by size-1 dimensions (e.g. `[2, 3] * [1, 3]`), explicitly broadcast first via `nv_broadcast_arrays(a, b)` (or `nv_broadcast_to(operand, target_shape)` / `prim_broadcast_in_dim()` for a one-sided broadcast).
+When two non-scalar arrays need to be combined and only differ by size-1 axes (e.g. `[2, 3] * [1, 3]`), explicitly broadcast first via `nv_broadcast_arrays(a, b)` (or `nv_broadcast_to(x, target_shape)` / `prim_broadcast_in_axes()` for a one-sided broadcast).
 
 ## Graph Tracing
 
@@ -62,4 +70,4 @@ When writing roxygen2 documentation for primitives or API functions:
 - Do not mention "1-based" indexing. Since this is an R package, 1-based indexing is the default.
 - Use `@templateVar primitive_id <name>` with `@template section_rules` to auto-generate the "Implemented Rules" section.
 - Use `@rdname` or `@inheritParams` to share documentation between `prim_*` and `nv_*` variants.
-- Where a `man-roxygen/` template is too generic for a specific primitive (e.g. the operand has specific dtype constraints), write the `@param` inline instead.
+- Where a `man-roxygen/` template is too generic for a specific primitive (e.g. the input has specific dtype constraints), write the `@param` inline instead.

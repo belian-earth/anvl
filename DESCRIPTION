@@ -23,15 +23,16 @@ License: MIT + file LICENSE
 URL: https://r-xla.github.io/anvl/, https://github.com/r-xla/anvl
 BugReports: https://github.com/r-xla/anvl/issues
 Depends:
-    R (>= 4.2.0)
+    R (>= 4.3.0)
 Imports:
     checkmate,
     cli,
+    fastmap,
     methods,
     pjrt (>= 0.4.0),
     rlang,
     safetensors (>= 0.2.0),
-    stablehlo (>= 0.3.0),
+    stablehlo (>= 0.3.0.903),
     tengen (>= 0.2.0),
     withr,
     xlamisc (>= 0.3.0)
@@ -43,7 +44,9 @@ Suggests:
     testthat (>= 3.0.0)
 Remotes:
     belian-earth/pjrt@raw-upload-dataptr-ro,
-    r-xla/stablehlo
+    r-xla/stablehlo,
+    r-xla/tengen,
+    r-xla/xlamisc
 Additional_repositories:
     https://r-xla.r-universe.dev
 VignetteBuilder:
@@ -69,11 +72,10 @@ Collate:
     'api-subset.R'
     'api-utilities.R'
     'asserts.R'
+    'backend-pjrt.R'
     'backend-quickr.R'
-    'backend-xla.R'
     'bibentries.R'
     'box.R'
-    'flatten.R'
     'graph-passes.R'
     'graph.R'
     'graph-print.R'
@@ -85,6 +87,7 @@ Collate:
     'quickr.R'
     'reexports.R'
     'reverse.R'
+    'roxygen.R'
     'rules-reverse.R'
     'rules-stablehlo.R'
     'serialize.R'

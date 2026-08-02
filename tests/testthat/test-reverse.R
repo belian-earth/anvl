@@ -77,7 +77,17 @@ test_that("constants work (scalar)", {
 })
 
 test_that("broadcasting works", {
-  # TODO
+  # A scalar operand auto-broadcasts against a non-scalar in elementwise ops.
+  # The reverse pass must reduce the broadcasted cotangent back to the scalar's
+  # shape.
+  f <- function(a, b) sum(nv_mul(a, b))
+  g <- jit(gradient(f))
+  res <- g(nv_scalar(2), nv_array(c(1, 2, 3), dtype = "f32"))
+  # d/da sum(a * b) = sum(b) = 6, reduced back to a scalar
+  expect_equal(res$a, nv_scalar(6))
+  expect_equal(shape(res$a), integer())
+  # d/db sum(a * b) = a broadcast over b's shape
+  expect_equal(res$b, nv_array(c(2, 2, 2), dtype = "f32"))
 })
 
 test_that("second order gradient (scalar)", {
@@ -262,13 +272,13 @@ test_that("wrt for nested non-array input: value_and_gradient", {
 
 test_that("can only compute gradient w.r.t. float arrays", {
   expect_snapshot(error = TRUE, {
-    gradient(nv_floor, wrt = "operand")(nv_scalar(1L))
+    gradient(nv_floor, wrt = "x")(nv_scalar(1L))
   })
 })
 
 test_that("wrt arg passed as plain R literal errors clearly", {
   expect_snapshot(error = TRUE, {
-    jit(function() gradient(nv_log, wrt = "operand")(1))()
+    jit(function() gradient(nv_log, wrt = "x")(1))()
   })
   expect_snapshot(error = TRUE, {
     jit(function() gradient(function(x, y) prim_add(x, y))(1, 2))()
@@ -330,13 +340,17 @@ test_that("Can propagate ambiguous float32 through integer/bool functions", {
     mean(x4)
   }
   grad <- jit(gradient(f))
-  grad(nv_scalar(1))
+  out <- grad(nv_scalar(1))
+  # the path runs entirely through integer/bool conversions, so no gradient
+  # flows back to the float input.
+  expect_equal(out$x, nv_scalar(0))
 })
 
 test_that("trace_fn matches args with formals", {
   graph1 <- trace_fn(prim_add, list(nv_aval("f32", c()), nv_aval("f32", c())))
   graph2 <- trace_fn(prim_add, list(lhs = nv_aval("f32", c()), rhs = nv_aval("f32", c())))
-  expect_equal(graph1$in_tree, graph2$in_tree)
+  expect_true(pjrt::tree_equal(graph1$in_tree, graph2$in_tree))
+  expect_equal(pjrt::tree_child_names(graph1$in_tree), c("lhs", "rhs"))
 })
 
 test_that("gradient works through graph with primitives that have no reverse rule", {

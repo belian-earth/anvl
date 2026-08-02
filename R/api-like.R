@@ -66,11 +66,11 @@ nv_fill_like <- function(like, value, shape = NULL, dtype = NULL, ambiguous = NU
 
 #' @rdname nv_iota
 #' @export
-nv_iota_like <- function(like, dim, shape = NULL, start = 1L, dtype = NULL, ambiguous = NULL, device = NULL) {
+nv_iota_like <- function(like, axis, shape = NULL, start = 1L, dtype = NULL, ambiguous = NULL, device = NULL) {
   do.call(
     nv_iota,
     c(
-      list(dim = dim, start = start),
+      list(axis = axis, start = start),
       like_defaults(like, shape = shape, dtype = dtype, ambiguous = ambiguous, device = device)
     )
   )
@@ -94,4 +94,24 @@ nv_seq_like <- function(like, start, end, steps = NULL, dtype = NULL, ambiguous 
 #' @jit static 2:4
 nv_eye_like <- function(like, n, dtype = NULL, device = NULL) {
   do.call(nv_eye, c(list(n = n), like_defaults(like, dtype = dtype, device = device)))
+}
+
+#' @rdname nv_lower_tri
+#' @export
+#' @jit static 2:4
+nv_lower_tri_like <- function(like, diagonal = -1L, shape = NULL, device = NULL) {
+  do.call(
+    nv_lower_tri,
+    c(list(diagonal = diagonal), like_defaults(like, shape = shape, device = device))
+  )
+}
+
+#' @rdname nv_upper_tri
+#' @export
+#' @jit static 2:4
+nv_upper_tri_like <- function(like, diagonal = 1L, shape = NULL, device = NULL) {
+  do.call(
+    nv_upper_tri,
+    c(list(diagonal = diagonal), like_defaults(like, shape = shape, device = device))
+  )
 }

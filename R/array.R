@@ -3,11 +3,23 @@
 #' The main array object.
 #' Its type is determined by a data type and a shape.
 #'
+#' @section Terminology:
+#' An array's **axes** are the indices that identify its directions, numbered
+#' `1`, `2`, `3`, ... The **size** of an axis (its *axis size*) is the extent
+#' along that axis, and the **shape** is the vector of all axis sizes. For
+#' example, `nv_array(1:6, shape = c(2, 3))` has two axes; the size of axis `1`
+#' is `2` and the size of axis `2` is `3`, so its shape is `c(2, 3)`. Use
+#' [`naxes()`][tengen::naxes] for the number of axes and
+#' [`shape()`][tengen::shape] for the axis sizes. We speak of the *size of an
+#' axis* rather than an array's "dimensions", as the latter is generally
+#' overloaded as it is used to refer to both the axis and it's size.
+#'
+#'
 #' @section Extractors:
 #' The following generic functions can be used to extract information from an `AnvlArray`:
 #' - [`dtype()`][tengen::dtype]: Get the data type of the array.
-#' - [`shape()`][tengen::shape]: Get the shape (dimensions) of the array.
-#' - [`ndims()`][tengen::ndims]: Get the number of dimensions.
+#' - [`shape()`][tengen::shape]: Get the shape (axis sizes) of the array.
+#' - [`naxes()`][tengen::naxes]: Get the number of axes.
 #' - [`device()`][tengen::device]: Get the device of the array.
 #' - [`platform()`]: Get the platform (e.g. `"cpu"`, `"cuda"`).
 #' - [`ambiguous()`]: Get whether the dtype is ambiguous.
@@ -19,6 +31,11 @@
 #' - [`nv_serialize()`] / [`nv_unserialize()`]:
 #'   Serialize/deserialize arrays to/from raw vectors.
 #'
+#' @section Backend:
+#' An `AnvlArray` is backend-dependent: it belongs to exactly one backend
+#' (`"pjrt"` or the experimental `"quickr"`) and lives on a device of that backend.
+#' The supported data types and devices differ between backends.
+#'
 #' @seealso [nv_fill], [nv_iota], [nv_seq], [as_array], [nv_serialize]
 #'
 #' @param data (any)\cr
@@ -26,33 +43,32 @@
 #'   Alternatively a `raw()` vector holding the native little-endian byte
 #'   payload of `prod(shape)` elements of `dtype`; both `dtype` and `shape`
 #'   are then required, and the bytes are uploaded without conversion
-#'   through R numeric types (only supported on the `"xla"` backend).
+#'   through R numeric types (only supported on the `"pjrt"` backend).
 #'   Raw payloads are read in column-major element order, or row-major
 #'   with `byrow = TRUE`.
 #' @param dtype (`NULL` | `character(1)` | [`DataType`])\cr
-#'   One of `r stablehlo:::roxy_dtypes()` or a [`tengen::DataType`].
+#'   One of `r roxy_dtypes()` or a [`tengen::DataType`].
 #'   The default (`NULL`) uses the current backend's default dtype:
-#'   `f32` for numeric data on `"xla"`, `f64` for numeric data on `"quickr"`,
+#'   `f32` for numeric data on `"pjrt"`, `f64` for numeric data on `"quickr"`,
 #'   `i32` for integer data, and `bool` for logical data.
-#' @param device (`NULL` | `character(1)` | [`PJRTDevice`][pjrt::pjrt_device])\cr
-#'   The device for the array (`"cpu"`, `"cuda"`).
-#'   Default is to use the CPU for new arrays.
-#'   This can be changed by setting the `PJRT_PLATFORM` environment variable.
+#' @template param_device
 #' @param shape (`NULL` | `integer()`)\cr
 #'   The output shape of the array.
 #'   The default (`NULL`) is to infer it from the data if possible.
 #'   Note that [`nv_array`] interprets length 1 vectors as having shape `(1)`.
-#'   To create a "scalar" with dimension `()`, use [`nv_scalar`] or explicitly specify `shape = c()`.
+#'   To create a "scalar" with no axes (shape `()`), use [`nv_scalar`] or explicitly specify `shape = c()`.
 #' @param ambiguous (`NULL` | `logical(1)`)\cr
 #'   Whether the dtype should be marked as ambiguous.
 #'   Defaults to `FALSE` for new arrays.
 #' @param backend (`NULL` | `character(1)`)\cr
-#'   Backend to use (`"xla"` or `"quickr"`).
-#'   Defaults to `default_backend()`.
+#'   Backend the array belongs to (`"pjrt"` or `"quickr"`).
+#'   The default (`NULL`) is inferred from `device` when `device` is a
+#'   backend-specific device object, and otherwise falls back to
+#'   [`default_backend()`].
 #'   Must not be specified inside [`jit()`].
 #' @param byrow (`logical(1)`)\cr
 #'   When constructing from an R object and the result has at least two
-#'   dimensions, fill the array in row-major order rather than the
+#'   axes, fill the array in row-major order rather than the
 #'   default column-major order, mirroring [`base::matrix()`]'s `byrow`.
 #'   Only allowed when `data` is an R object — passing an existing
 #'   `AnvlArray` together with `byrow = TRUE` is an error.
@@ -79,15 +95,14 @@
 #' # A scalar array.
 #' nv_scalar(3.14)
 #'
-#' # An uninitialized 2x3 array (contents are unspecified). Useful as a
-#' # placeholder for outputs of jitted functions when donating buffers.
+#' # An uninitialized 2x3 array (contents are unspecified)
 #' nv_empty("f32", shape = c(2L, 3L))
 #'
 #' # --- Extractors ---
 #' x <- nv_array(1:6, shape = c(2L, 3L))
 #' dtype(x)
 #' shape(x)
-#' ndims(x)
+#' naxes(x)
 #' device(x)
 #' platform(x)
 #' ambiguous(x)
@@ -445,7 +460,7 @@ shape.AnvlArray <- function(x, ...) {
 #'   If `TRUE`, sanity-check the materialized R vector against losing
 #'   information across the device-to-host boundary, and abort if any
 #'   problematic value is detected. Forwarded to the backend; for the
-#'   `xla` backend the relevant cases are `i32`/`i64` values colliding
+#'   `pjrt` backend the relevant cases are `i32`/`i64` values colliding
 #'   with the `NA` bit pattern and `ui64` values `>= 2^63` wrapping
 #'   through `bit64::integer64`. See [`pjrt::as_array.PJRTBuffer()`] for
 #'   the full list. Defaults to `FALSE`. See the "Gotchas" vignette.
@@ -464,7 +479,7 @@ as.array.AnvlArray <- function(x, ...) {
 #' @method as.matrix AnvlArray
 #' @export
 as.matrix.AnvlArray <- function(x, ...) {
-  nd <- ndims(x)
+  nd <- naxes(x)
   if (nd != 2L) {
     cli_abort("{.fn as.matrix} requires a 2-D array, but got a {nd}-D array.")
   }
@@ -518,7 +533,7 @@ NULL
 #' @export
 as.double.AnvlArray <- function(x, check = FALSE, ...) {
   dt <- dtype(x)
-  if (!(inherits(dt, "FloatType") || inherits(dt, "IntegerType") || inherits(dt, "UIntegerType"))) {
+  if (!(is_dtype_float(dt) || is_dtype_int(dt) || is_dtype_uint(dt))) {
     cli_abort("{.fn as.double} requires a float or integer dtype, but got {.val {as.character(dt)}}.")
   }
   as.double(as_array(x, check = check))
@@ -529,7 +544,7 @@ as.double.AnvlArray <- function(x, check = FALSE, ...) {
 #' @export
 as.integer.AnvlArray <- function(x, check = FALSE, ...) {
   dt <- dtype(x)
-  if (!(inherits(dt, "IntegerType") || inherits(dt, "UIntegerType"))) {
+  if (!(is_dtype_int(dt) || is_dtype_uint(dt))) {
     cli_abort("{.fn as.integer} requires a (signed or unsigned) integer dtype, but got {.val {as.character(dt)}}.")
   }
   as.integer(as_array(x, check = check))
@@ -539,7 +554,7 @@ as.integer.AnvlArray <- function(x, check = FALSE, ...) {
 #' @method as.logical AnvlArray
 #' @export
 as.logical.AnvlArray <- function(x, check = FALSE, ...) {
-  if (!inherits(dtype(x), "BooleanType")) {
+  if (!is_dtype_bool(dtype(x))) {
     cli_abort("{.fn as.logical} requires a {.val bool} dtype, but got {.val {as.character(dtype(x))}}.")
   }
   as.logical(as_array(x, check = check))
@@ -579,7 +594,7 @@ backend.AnvlArray <- function(x, ...) {
 
 #' @export
 backend.PJRTDevice <- function(x, ...) {
-  "xla"
+  "pjrt"
 }
 
 #' @export
@@ -603,9 +618,9 @@ backend.QuickrDevice <- function(x, ...) {
 #' @section Extractors:
 #' The following extractors are available on `AbstractArray` objects:
 #' - [`dtype()`][tengen::dtype]: Get the data type of the array.
-#' - [`shape()`][tengen::shape]: Get the shape (dimensions) of the array.
+#' - [`shape()`][tengen::shape]: Get the shape (axis sizes) of the array.
 #' - [`ambiguous()`]: Get whether the dtype is ambiguous.
-#' - [`ndims()`][tengen::ndims]: Get the number of dimensions.
+#' - [`naxes()`][tengen::naxes]: Get the number of axes.
 #'
 #' @param dtype ([`tengen::DataType`] | `character(1)`)\cr
 #'   The data type of the array.
@@ -684,7 +699,7 @@ shape.AbstractArray <- function(x, ...) {
 #' x
 #' ambiguous(x)
 #' shape(x)
-#' ndims(x)
+#' naxes(x)
 #' dtype(x)
 #'
 #' # How it appears during tracing
@@ -736,7 +751,7 @@ ConcreteArray <- function(data) {
 #' x
 #' ambiguous(x)
 #' shape(x)
-#' ndims(x)
+#' naxes(x)
 #' dtype(x)
 #' # How it appears during tracing:
 #' # 1. via R literals
@@ -787,33 +802,33 @@ LiteralArray <- function(data, shape, dtype = default_dtype(data), ambiguous) {
 #'   The shape of the array.
 #' @param dtype ([`tengen::DataType`])\cr
 #'   The data type.
-#' @param dimension (`integer(1)`)\cr
-#'   The dimension along which values increase.
+#' @param axis (`integer(1)`)\cr
+#'   The axis along which values increase.
 #' @param start (`integer(1)`)\cr
 #'   The starting value.
 #' @template param_ambiguous
 #'
 #' @examplesIf pjrt::plugins_downloaded()
-#' x <- IotaArray(shape = 4L, dtype = "i32", dimension = 1L)
+#' x <- IotaArray(shape = 4L, dtype = "i32", axis = 1L)
 #' x
 #' ambiguous(x)
 #' shape(x)
-#' ndims(x)
+#' naxes(x)
 #' dtype(x)
 #' # How it appears during tracing:
-#' graph <- trace_fn(function() nv_iota(dim = 1L, dtype = "i32", shape = 4L), list())
+#' graph <- trace_fn(function() nv_iota(axis = 1L, dtype = "i32", shape = 4L), list())
 #' graph
 #' graph$outputs[[1]]$aval
 #' @export
-IotaArray <- function(shape, dtype, dimension, start = 1L, ambiguous = FALSE) {
+IotaArray <- function(shape, dtype, axis, start = 1L, ambiguous = FALSE) {
   shape <- as_shape(shape)
   dtype <- as_dtype(dtype)
   assert_flag(ambiguous)
   # stablehlo::Shape is a wrapper object; its rank is length(shape$dims), not length(shape)
-  assert_int(dimension, lower = 1L, upper = length(shape$dims))
+  assert_int(axis, lower = 1L, upper = length(shape$dims))
   assert_int(start)
   structure(
-    list(shape = shape, dtype = dtype, dimension = dimension, start = start, ambiguous = ambiguous),
+    list(shape = shape, dtype = dtype, axis = axis, start = start, ambiguous = ambiguous),
     class = c("IotaArray", "AbstractArray")
   )
 }
@@ -821,10 +836,10 @@ IotaArray <- function(shape, dtype, dimension, start = 1L, ambiguous = FALSE) {
 #' @export
 format.IotaArray <- function(x, ...) {
   sprintf(
-    "IotaArray(shape=%s, dtype=%s, dimension=%s, start=%s)",
+    "IotaArray(shape=%s, dtype=%s, axis=%s, start=%s)",
     shape2string(x$shape),
     dtype2string(x$dtype, x$ambiguous),
-    x$dimension,
+    x$axis,
     x$start
   )
 }

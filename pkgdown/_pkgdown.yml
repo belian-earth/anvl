@@ -94,7 +94,7 @@ reference:
       - ambiguous
       - dtype
       - shape
-      - ndims
+      - naxes
       - device
       - starts_with("platform")
 
@@ -214,7 +214,7 @@ reference:
       - nv_is_infinite
 
   - subtitle: Reduction Operations
-    desc: Operations that reduce array dimensions
+    desc: Operations that reduce array axes
     contents:
       - nv_reduce_sum
       - nv_reduce_prod
@@ -224,7 +224,7 @@ reference:
       - nv_reduce_all
 
   - subtitle: Statistical Summaries
-    desc: Summary statistics over array dimensions
+    desc: Summary statistics over array axes
     contents:
       - nv_mean
       - nv_median
@@ -233,7 +233,7 @@ reference:
       - nv_sd
 
   - subtitle: Cumulative Operations
-    desc: Cumulative (scan) operations along a single dimension
+    desc: Cumulative (scan) operations along a single axis
     contents:
       - nv_cumsum
       - nv_cumprod
@@ -261,6 +261,15 @@ reference:
       - nv_extract_diag
       - nv_tril
       - nv_triu
+      - nv_lower_tri
+      - nv_upper_tri
+
+  - subtitle: Convolution
+    desc: N-dimensional convolution operations
+    contents:
+      - nv_conv1d
+      - nv_conv2d
+      - nv_conv3d
 
   - subtitle: Logical and Bitwise Operations
     desc: Logical and bitwise operations on arrays
@@ -331,7 +340,7 @@ reference:
       - is_device
       - quickr_device
       - AnvlBackend
-      - AnvlBackendXla
+      - AnvlBackendPjrt
       - AnvlBackendQuickr
 
   - title: Miscellaneous
@@ -373,14 +382,13 @@ reference:
       - IotaArray
       - dtype_abstract
       - shape_abstract
-      - ndims_abstract
+      - naxes_abstract
       - ambiguous_abstract
       - to_abstract
       - arrayish
 
   - subtitle: Transformations
     contents:
-      - xla
       - jit_roclet
       - apply_jit_registry
       - trace_fn
@@ -388,7 +396,7 @@ reference:
       - rule_reverse
       - graph_to_quickr_r_function
       - jit_eval
-      - compile_xla
+      - compile_pjrt
       - stablehlo
       - current_platform
       - local_platform
@@ -399,12 +407,10 @@ reference:
       - flatten
       - unflatten
       - build_tree
-      - reindex_tree
       - tree_size
       - tree_path
       - map_tree
       - pmap_tree
-      - filter_list_node
 
   - subtitle: Miscellaneous
     contents:

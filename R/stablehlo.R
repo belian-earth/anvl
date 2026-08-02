@@ -64,9 +64,15 @@ env_get <- function(env, gval) {
 #'
 #' The rules for translating to stablehlo are stored in `$rules[["stablehlo"]]` of the primitives.
 #'
-#' This is a low-level function; most users should use [`jit()`] or [`xla()`] instead.
+#' This is a low-level function; most users should use [`jit()`] instead.
 #' @param graph ([`AnvlGraph`])\cr
 #'   The graph to lower (e.g. produced by [`trace_fn()`]).
+#' @param id (`character(1)`)\cr
+#'   The id of the resulting StableHLO function. Use `"main"` (the default)
+#'   for a top-level lowering (returning from the `main` function finalizes
+#'   the module) and `""` for a closure/region lowering (e.g. a while body or
+#'   a scatter update computation) that builds an anonymous nested function
+#'   inside an enclosing build.
 #' @param constants_as_inputs (`logical(1)`)\cr
 #'   If `TRUE` (default), constants are registered as inputs to the StableHLO function
 #'   so they can be passed in at execution time.
@@ -98,7 +104,7 @@ env_get <- function(env, gval) {
 #'     appended when `donate_unaliased_outputs = TRUE`. Each entry is a
 #'     `list(dtype, shape)` describing the buffer the executor must
 #'     allocate. Empty when no phantoms were added.
-#' @seealso [`trace_fn()`], [`jit()`], [`xla()`], [`current_platform()`]
+#' @seealso [`trace_fn()`], [`jit()`], [`current_platform()`]
 #' @export
 #' @examplesIf pjrt::plugins_downloaded()
 #' x <- nv_array(c(1, 2))
@@ -107,18 +113,24 @@ env_get <- function(env, gval) {
 #' stablehlo(graph)
 stablehlo <- function(
   graph,
+  id = "main",
   constants_as_inputs = TRUE,
   env = NULL,
   donate = character(),
   donate_unaliased_outputs = FALSE,
   platform = NULL
 ) {
+  assert_string(id)
   if (!is.null(platform)) {
     local_platform(platform)
   }
   # Node -> FuncValue
   env <- HloEnv(parent = env)
-  func <- stablehlo::local_func(id = "main")
+  # A top-level lowering builds the module's `main` func (whose hlo_return
+  # finalizes the module). A closure/region lowering (id = "", e.g. a scatter
+  # update computation or a while body) builds an anonymous nested func
+  # inside the enclosing build.
+  func <- stablehlo::local_func(id = id)
   inps <- if (constants_as_inputs) c(graph$constants, graph$inputs) else graph$inputs
 
   gnode_to_fval <- function(gnode) {
@@ -135,7 +147,7 @@ stablehlo <- function(
     # Constants are never donated, inputs may be
     c(
       rep(FALSE, length(graph$constants)),
-      flat_mask_from_names(graph$in_tree, donate)
+      pjrt::tree_leaf_mask(graph$in_tree, donate)
     )
   } else {
     rep(FALSE, length(inps))
@@ -229,10 +241,20 @@ stablehlo <- function(
         gnode_to_fval(x)
       }
     })
+    rule <- prim[["stablehlo"]]
     if (is_higher_order_primitive(prim)) {
       params <- c(params, list(.env = env))
     }
-    fvals_out <- rlang::exec(prim[["stablehlo"]], !!!c(inputs, params))
+    # Forward this call's known output types (already inferred at trace time) to
+    # rules that opt in by declaring an `output_types` parameter, letting them
+    # pass the types to their hlo_* builder and skip stablehlo's re-inference.
+    if ("output_types" %in% names(formals(rule))) {
+      params <- c(
+        params,
+        list(output_types = lapply(call$outputs, function(o) at2vt(o$aval)))
+      )
+    }
+    fvals_out <- rlang::exec(rule, !!!c(inputs, params))
     if (length(call$outputs) != length(fvals_out)) {
       cli_abort("Expected {length(call$outputs)} outputs, but got {length(fvals_out)}")
     }

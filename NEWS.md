@@ -1,38 +1,79 @@
 # anvl (development version)
 
+## Breaking changes
+
+* Renamed `dim`/`dims` to `axis`/`axes` throughout the package (an axis is an
+  index, a dimension is a size); `ndims()` is now `naxes()`.
+* Renamed the primary array argument of `prim_*` / `nv_*` functions from
+  `operand` to `x`.
+* Renamed the `"xla"` backend to `"pjrt"`.
+* `xla()` has been removed; use `jit()` instead.
+
 ## Features
 
 * `nv_array()` accepts a `raw()` vector holding the native byte payload of
   `prod(shape)` elements of `dtype` (both then required). The bytes reach the
   device without conversion through R doubles, which also gives exact uploads
   for unsigned dtypes. `byrow` selects row-major element order for the
-  payload. Only supported on the `"xla"` backend; the inverse direction is
+  payload. Only supported on the `"pjrt"` backend; the inverse direction is
   the existing `as_raw()`.
 * `nv_quantile()` and `nv_median()` use a `top_k` selection instead of a full
   sort when every requested quantile lies in the lower half of the axis
   (float inputs). Measured ~2.3x faster on CPU for `nan_rm = TRUE` medians
   over axes of 31-90 elements; results are unchanged.
+* Dimension arguments (`dim`, `dims`, `dimension`, `permutation`) now accept
+  negative values that count from the end, so `-1` refers to the last
+  dimension. This works at both layers: in the `prim_*` primitives
+  (`prim_transpose()`, `prim_concatenate()`, `prim_reduce_*()`,
+  `prim_reduce()`, `prim_cumsum()` / `prim_cumprod()` / `prim_cummax()` /
+  `prim_cummin()`, `prim_argmax()`, `prim_argmin()`, `prim_reverse()`,
+  `prim_iota()`, `prim_sort()`) and in the `nv_*` functions built on top of
+  them, including `nv_squeeze()`, `nv_unsqueeze()`, `nv_select()`,
+  `nv_top_k()`, `nv_quantile()` and `nv_median()` (#396).
+* `nv_reshape()` and `prim_reshape()` accept a single `-1` in `shape`, whose
+  extent is then inferred from the number of elements of the input, e.g.
+  `nv_reshape(x, c(2, -1))` (#396).
+* Reductions now reject dimensions that are out of range for the operand
+  instead of silently ignoring them (#396).
+* New `nv_lower_tri()` and `nv_upper_tri()` (with `nv_lower_tri_like()` /
+  `nv_upper_tri_like()`) return a boolean triangular mask for a given shape,
+  mirroring base R's `lower.tri()` / `upper.tri()`. As in base R, the main
+  diagonal is excluded by default; pass `diagonal = 0L` to include it. Use
+  `nv_tril()` / `nv_triu()` to zero out a triangle of an existing array.
 * `trace_fn()` gained an `optimize` argument controlling which graph
   optimization passes run on the traced graph. `TRUE` runs all passes, `FALSE`
   (default) runs none, and a character vector (e.g.
-  `c("inline_scalars", "remove_unused_constants")`) selects a subset. `jit()`
-  and `xla()` always trace with all passes enabled.
+  `c("inline_scalars", "remove_unused_constants")`) selects a subset. `jit()` always traces with all
+  passes enabled.
 * New `nv_dnorm()` computes the normal distribution's probability density
   function (or, with `log = TRUE`, its log-density).
+* New `nv_pnorm()` computes the normal distribution's cumulative distribution
+  function (`lower_tail = FALSE` for the upper tail, `log_p = TRUE` for the
+  log-probability, staying accurate far into either tail).
 * `nv_array()`, `nv_scalar()`, `as_array()`, and the `as.integer()` /
   `as.double()` / `as.logical()` / `as.vector()` methods for
   `AnvlArray` gained a `check` argument that opts into scanning for
   `NA` values during host -> device and device -> host transfers. See
   the "Gotchas" vignette.
-
 * `nv_var()` and `nv_sd()` now default to `dims = NULL`, which reduces
   over all dimensions and returns a scalar, consistent with the other
   reductions.
+* Supports 1-3d convolutions.
 
 ## Performance
 
 * Most `nv_*()` API functions are now JIT-compiled internally (via a new
   `@jit` roxygen roclet), speeding up eager-mode execution.
+* Tracing (`trace_fn()`) performance has been improved.
+* Tracing now accumulates primitive calls in a `fastmap::fastqueue`
+  (amortised-O(1) append) instead of an R list grown with `c()`
+  (copy-on-modify, O(n^2)). Tracing large unrolled graphs is
+  substantially faster, e.g. ~1.36x for an 8000-op chain, with the gain
+  growing with graph size.
+* StableHLO lowering forwards the trace-time output types to the `hlo_*`
+  builders (via an `output_types` argument passed to the lowering rules), so
+  stablehlo skips redundant type inference when lowering the graph.
+* Calling `jit()`ted functions is now significantly faster.
 
 ## Bug fixes
 
@@ -47,6 +88,24 @@
 
 * `nv_diag()` now errors on non-1-D input instead of silently producing an
   incorrect result.
+
+* Errors raised while tracing are now phrased in anvl's own vocabulary (#298).
+  Messages originating in the `stablehlo` package used the StableHLO spec's
+  terminology; they now speak of arrays instead of tensors, and of `x` instead
+  of `operand`. For example, `` `operand` must have dtype float `` became
+  `` `x` must have dtype float ``.
+
+
+* `jit()` now rejects static arguments with reference semantics -- an
+  environment (and therefore also an R6 or reference class object) or an
+  external pointer, including one nested inside a static list (#17).
+  Such a value can be mutated in place while the compilation cache key stays
+  equal, which silently reused a program compiled from its old contents.
+  Functions and device objects remain valid static values.
+* Errors raised while tracing now speak of arrays instead of tensors (#298).
+  Previously, messages that originated in the `stablehlo` package used the
+  StableHLO spec's terminology, e.g. `` `lhs` and `rhs` must have the same
+  tensor type. x Got tensor<4xi32> and tensor<4xf32>. ``
 
 
 # anvl 0.3.0

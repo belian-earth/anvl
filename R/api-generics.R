@@ -31,6 +31,10 @@ Ops.AnvlArray <- function(e1, e2) {
 #' @export
 Ops.AnvlBox <- Ops.AnvlArray
 
+# `matrixOps` is the group generic R 4.3.0 introduced for `%*%`. Registering a
+# method for it is what sets the minimum R version -- for anvl and, since the
+# packages are installed together, for the ecosystem: on R 4.2 the generic does
+# not exist and loading anvl's namespace fails outright.
 #' @export
 matrixOps.AnvlArray <- function(x, y) {
   switch(
@@ -91,7 +95,7 @@ Math.AnvlBox <- Math.AnvlArray
 #' @export
 Summary.AnvlArray <- function(x, ..., na.rm = FALSE) {
   # Forward `na.rm` to the underlying nv_reduce_*'s `nan_rm` arg and `...`
-  # for supported extras (e.g. `sum(x, dims = 1L)`); unsupported extras error
+  # for supported extras (e.g. `sum(x, axes = 1L)`); unsupported extras error
   # there as unused args.
   switch(
     .Generic, # nolint
@@ -114,17 +118,16 @@ Summary.AnvlArray <- function(x, ..., na.rm = FALSE) {
 Summary.AnvlBox <- Summary.AnvlArray
 
 #' @rdname nv_mean
-#' @template param_x_operand
 #' @param trim Currently not supported.
 #' @param na.rm Forwarded to [nv_mean()]'s `nan_rm` argument.
 #' @param ... No additional arguments.
 #' @method mean AnvlArray
 #' @export
-mean.AnvlArray <- function(x, trim = 0, na.rm = FALSE, ..., dims = NULL, drop = TRUE) {
+mean.AnvlArray <- function(x, trim = 0, na.rm = FALSE, ..., axes = NULL, drop = TRUE) {
   if (!identical(trim, 0)) {
     cli_abort("{.arg trim} is not supported by {.fn mean} for anvl arrays.")
   }
-  nv_mean(x, ..., dims = dims, drop = drop, nan_rm = na.rm)
+  nv_mean(x, ..., axes = axes, drop = drop, nan_rm = na.rm)
 }
 
 #' @method mean AnvlBox
@@ -132,7 +135,6 @@ mean.AnvlArray <- function(x, trim = 0, na.rm = FALSE, ..., dims = NULL, drop = 
 mean.AnvlBox <- mean.AnvlArray
 
 #' @rdname nv_is_nan
-#' @template param_x_operand
 #' @method is.nan AnvlArray
 #' @export
 is.nan.AnvlArray <- function(x) {
@@ -144,7 +146,6 @@ is.nan.AnvlArray <- function(x) {
 is.nan.AnvlBox <- is.nan.AnvlArray
 
 #' @rdname nv_is_infinite
-#' @template param_x_operand
 #' @method is.infinite AnvlArray
 #' @export
 is.infinite.AnvlArray <- function(x) {
@@ -156,7 +157,6 @@ is.infinite.AnvlArray <- function(x) {
 is.infinite.AnvlBox <- is.infinite.AnvlArray
 
 #' @rdname nv_is_finite
-#' @template param_x_operand
 #' @method is.finite AnvlArray
 #' @export
 is.finite.AnvlArray <- function(x) {
@@ -172,12 +172,12 @@ is.finite.AnvlBox <- is.finite.AnvlArray
 #' @title Transpose
 #' @name nv_transpose
 #' @description
-#' Permutes the dimensions of an array. You can also use `t()` for matrices.
-#' @template param_x_operand
+#' Permutes the axes of an array. You can also use `t()` for matrices.
 #' @param permutation (`integer()` | `NULL`)\cr
-#'   New ordering of dimensions. If `NULL` (default), reverses the dimensions.
+#'   New ordering of axes. If `NULL` (default), reverses the axes.
+#'   Negative values count from the end, i.e. `-1` refers to the last axis.
 #' @return [`arrayish`]\cr
-#'   Has the same data type as `operand` and shape `nv_shape(operand)[permutation]`.
+#'   Has the same data type as `x` and shape `nv_shape(x)[permutation]`.
 #' @seealso [prim_transpose()] for the underlying primitive.
 #' @examplesIf pjrt::plugins_downloaded()
 #' x <- nv_matrix(1:6, nrow = 2)
@@ -185,7 +185,7 @@ is.finite.AnvlBox <- is.finite.AnvlArray
 #' @method t AnvlArray
 #' @export
 t.AnvlArray <- function(x) {
-  nd <- ndims(x)
+  nd <- naxes(x)
   if (nd != 2L) {
     cli_abort("{.fn t} requires a 2-D array, but got a {nd}-D array.")
   }
@@ -197,14 +197,13 @@ t.AnvlArray <- function(x) {
 t.AnvlBox <- t.AnvlArray
 
 #' @rdname nv_median
-#' @template param_x_operand
 #' @param na.rm Forwarded to [nv_median()]'s `nan_rm` argument.
 #' @param ... No additional arguments.
 #' @method median AnvlArray
 #' @export
-median.AnvlArray <- function(x, na.rm = FALSE, ..., dim = NULL, interpolation = "linear") {
+median.AnvlArray <- function(x, na.rm = FALSE, ..., axis = NULL, interpolation = "linear") {
   rlang::check_dots_empty()
-  nv_median(x, dim = dim, interpolation = interpolation, nan_rm = na.rm)
+  nv_median(x, axis = axis, interpolation = interpolation, nan_rm = na.rm)
 }
 
 #' @method median AnvlBox
@@ -212,13 +211,12 @@ median.AnvlArray <- function(x, na.rm = FALSE, ..., dim = NULL, interpolation = 
 median.AnvlBox <- median.AnvlArray
 
 #' @rdname nv_sort
-#' @template param_x_operand
 #' @param decreasing (`logical(1)`)\cr If `TRUE`, sort in decreasing order.
 #' @param ... No additional arguments.
 #' @method sort AnvlArray
 #' @export
-sort.AnvlArray <- function(x, decreasing = FALSE, ..., dim = NULL) {
-  nv_sort(x, decreasing = decreasing, ..., dim = dim)
+sort.AnvlArray <- function(x, decreasing = FALSE, ..., axis = NULL) {
+  nv_sort(x, decreasing = decreasing, ..., axis = axis)
 }
 
 #' @method sort AnvlBox
@@ -226,7 +224,6 @@ sort.AnvlArray <- function(x, decreasing = FALSE, ..., dim = NULL) {
 sort.AnvlBox <- sort.AnvlArray
 
 #' @rdname nv_subset
-#' @template param_x_operand
 #' @method [ AnvlArray
 #' @export
 `[.AnvlArray` <- function(x, ...) {
@@ -246,7 +243,6 @@ sort.AnvlBox <- sort.AnvlArray
 `[.AnvlBox` <- `[.AnvlArray`
 
 #' @rdname nv_subset_assign
-#' @template param_x_operand
 #' @method [<- AnvlArray
 #' @export
 `[<-.AnvlArray` <- function(x, ..., value) {
@@ -348,7 +344,6 @@ solve.AnvlArray <- function(a, b, ...) {
 solve.AnvlBox <- solve.AnvlArray
 
 #' @rdname nv_qr
-#' @template param_x_operand
 #' @param ... No additional arguments.
 #' @method qr AnvlArray
 #' @export
@@ -361,7 +356,6 @@ qr.AnvlArray <- function(x, ...) {
 qr.AnvlBox <- qr.AnvlArray
 
 #' @rdname nv_chol
-#' @template param_x_operand
 #' @param lower (`logical(1)`)\cr If `TRUE`, return the lower-triangular factor.
 #' @param ... No additional arguments.
 #' @method chol AnvlArray
@@ -375,7 +369,6 @@ chol.AnvlArray <- function(x, ..., lower = FALSE) {
 chol.AnvlBox <- chol.AnvlArray
 
 #' @rdname nv_determinant
-#' @template param_x_operand
 #' @param logarithm (`logical(1)`)\cr If `TRUE` (default), return the log
 #'   of the absolute determinant.
 #' @param ... No additional arguments.
