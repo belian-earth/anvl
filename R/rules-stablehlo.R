@@ -6,9 +6,7 @@
 # stablehlo skip re-inference. Composite and region rules (reduce, cumulative
 # ops, linalg decompositions, ...) omit the parameter and keep normal inference.
 
-prim_fill[["stablehlo"]] <- function(value, shape, dtype, ambiguous) {
-  # ambiguity only relevant for type promotion, but when we lower
-  # there is no type promotion, so it has no effect
+prim_fill[["stablehlo"]] <- function(value, shape, dtype) {
   list(hlo_tensor(value, shape = shape, dtype = dtype))
 }
 
@@ -596,7 +594,7 @@ prim_reverse[["stablehlo"]] <- function(x, axes, output_types) {
   list(hlo_reverse(x, axes - 1L, output_types = output_types))
 }
 
-prim_iota[["stablehlo"]] <- function(axis, dtype, shape, start, ambiguous) {
+prim_iota[["stablehlo"]] <- function(axis, dtype, shape, start) {
   out <- hlo_iota(iota_dimension = axis - 1L, dtype = dtype, shape = shape)
   if (start != 0L) {
     offset <- hlo_broadcast_in_dim(
@@ -636,7 +634,7 @@ prim_round[["stablehlo"]] <- function(x, method) {
   )
 }
 
-prim_convert[["stablehlo"]] <- function(x, dtype, ambiguous, output_types) {
+prim_convert[["stablehlo"]] <- function(x, dtype, output_types) {
   list(hlo_convert(x, dtype, output_types = output_types))
 }
 
@@ -880,9 +878,9 @@ prim_qr[["stablehlo"]] <- function(x) {
   vt <- x$value_type
   tt <- vt$type
   dt <- tt$dtype
-  dims <- as.integer(tt$shape$dims)
-  m <- dims[1L]
-  n <- dims[2L]
+  shp <- shape(tt)
+  m <- shp[1L]
+  n <- shp[2L]
   k <- min(m, n)
 
   # pjrt's QR is split across two custom calls (matching jaxlib + LAPACK):
@@ -946,7 +944,7 @@ prim_qr[["stablehlo"]] <- function(x) {
 # outer `pivots` Value the same way an anvl-traced `prim_while` body would.
 pivots_to_permutation <- function(pivots, n) {
   func <- pivots$func
-  k <- as.integer(pivots$value_type$type$shape$dims[[1L]])
+  k <- shape(pivots$value_type)[[1L]]
 
   iota0 <- hlo_iota(iota_dimension = 0L, dtype = "i32", shape = n, func = func)
   one_n <- hlo_tensor(1L, dtype = "i32", shape = n, func = func)
@@ -1000,9 +998,9 @@ prim_lu[["stablehlo"]] <- function(x) {
   vt <- x$value_type
   tt <- vt$type
   dt <- tt$dtype
-  dims <- as.integer(tt$shape$dims)
-  m <- dims[1L]
-  n <- dims[2L]
+  shp <- shape(tt)
+  m <- shp[1L]
+  n <- shp[2L]
   k <- min(m, n)
 
   lu_type <- vt(dtype = dt, shape = c(m, n))
@@ -1026,9 +1024,9 @@ prim_lu[["stablehlo"]] <- function(x) {
 prim_svd[["stablehlo"]] <- function(x) {
   tt <- x$value_type$type
   dt <- tt$dtype
-  dims <- as.integer(tt$shape$dims)
-  m <- dims[1L]
-  n <- dims[2L]
+  shp <- shape(tt)
+  m <- shp[1L]
+  n <- shp[2L]
   k <- min(m, n)
 
   u_type <- vt(dtype = dt, shape = c(m, k))
@@ -1089,8 +1087,7 @@ prim_svd[["stablehlo"]] <- function(x) {
 prim_eigh[["stablehlo"]] <- function(x) {
   tt <- x$value_type$type
   dt <- tt$dtype
-  dims <- as.integer(tt$shape$dims)
-  n <- dims[1L]
+  n <- shape(tt)[1L]
 
   v_type <- vt(dtype = dt, shape = c(n, n))
   w_type <- vt(dtype = dt, shape = n)

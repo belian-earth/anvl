@@ -63,7 +63,7 @@ jit_quickr_impl <- function(f, static, cache_size, unwrap) {
     # the AnvlBackend contract, not store dtype/shape/device as fields.
     extractor = function(leaf) {
       list(
-        aval = list(dtype = dtype(leaf), shape = shape(leaf), ambiguous = ambiguous(leaf)),
+        aval = list(dtype = dtype(leaf), shape = shape(leaf)),
         device = device(leaf),
         backend = backend(leaf)
       )
@@ -148,7 +148,7 @@ compile_quickr <- function(f, args_flat, in_tree, arg_devices = list(), unwrap =
 #' @export
 AnvlBackendQuickr <- function() {
   backend <- AnvlBackend(
-    new_data = function(data, dtype, shape, device, ambiguous, row_major = FALSE) {
+    new_data = function(data, dtype, shape, device, row_major = FALSE) {
       if (is.raw(data)) {
         cli_abort("Raw {.arg data} payloads are not supported by the {.val quickr} backend.")
       }
@@ -191,7 +191,6 @@ AnvlBackendQuickr <- function() {
           data = data,
           dtype = dtype,
           shape = shape,
-          ambiguous = ambiguous,
           # quickr is CPU-only, so every accepted `device` is this one. It is
           # stored rather than recomputed on demand: `$device` is part of what
           # identifies an array, and pjrt's dispatcher reads it off the leaf.
@@ -201,7 +200,7 @@ AnvlBackendQuickr <- function() {
         class = "AnvlArray"
       )
     },
-    new_empty = function(dtype, shape, device, ambiguous) {
+    new_empty = function(dtype, shape, device) {
       if (!is.null(device)) {
         if (is.character(device) && (device != "quickr")) {
           cli_abort("Unsupported device {.val {device}} for 'quickr' backend")
@@ -229,7 +228,6 @@ AnvlBackendQuickr <- function() {
           data = data,
           dtype = dtype,
           shape = shape,
-          ambiguous = ambiguous,
           device = quickr_device("cpu"),
           backend = "quickr"
         ),
@@ -238,7 +236,6 @@ AnvlBackendQuickr <- function() {
     },
     dtype = function(x) x$dtype,
     shape = function(x) x$shape,
-    ambiguous = function(x) x$ambiguous,
     as_array = function(x, check) x$data,
     as_raw = function(x, row_major) as.raw(x$data),
     platform = function(x) "cpu",

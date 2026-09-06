@@ -9,7 +9,6 @@ AnvlBackend(
   new_empty,
   dtype,
   shape,
-  ambiguous,
   as_array,
   as_raw,
   platform,
@@ -34,8 +33,6 @@ element order of raw byte payloads; backends that do not support raw
 \item{dtype}{(\code{function})\cr Extracts the dtype from an AnvlArray.}
 
 \item{shape}{(\code{function})\cr Extracts the shape from an AnvlArray.}
-
-\item{ambiguous}{(\code{function})\cr Extracts the ambiguous flag from an AnvlArray.}
 
 \item{as_array}{(\verb{function(x, check)})\cr Converts an AnvlArray to an R
 array. The \code{check} flag is forwarded from \code{\link[=as_array]{as_array()}}; backends may use

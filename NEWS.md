@@ -1,5 +1,41 @@
 # anvl (development version)
 
+## Breaking changes
+
+* The type system of {anvl} was changed to avoid the problems reported in issue #373.
+  Specifically, the ambiguity system was replaced with the `RData` system and a new system of rules for type promotions.
+  With it, also the promotion behavior of various primitives and API
+  functions was improved.
+* `jit_eval()` was removed as it is no longer needed.
+* A `Shape` (re-exported from {stablehlo}) *is* its integer vector now, with a
+  class attached, rather than a list wrapping one. `length(shape)` is the number
+  of axes, `shape[i]` is the size of axis `i`, and `shape$dims` is gone -- read
+  the axis sizes with `unclass()`. `shape()` keeps working on an array; it is
+  only the `Shape` object itself that no longer has a `shape()` method, having
+  nothing left to unwrap.
+
+## Bug fixes
+
+* The gradient of a conversion into a non-float data type is now zero instead
+  of one. `prim_convert()` / `nv_convert()` passed the cotangent through
+  whatever the data types were, so `nv_convert(nv_convert(x, "i32"), "f64")`
+  reported a gradient of 1 where `nv_floor()` -- the same function on the
+  reals -- correctly reported 0. Conversions between floats still pass the
+  gradient through.
+* `prim_scatter()` now checks that `update_computation` returns one value of
+  `x`'s data type, as `prim_reduce()` already did for its `reductor`. A
+  combiner returning something else made type inference declare a data type
+  the call could not produce, and failed in the backend.
+* `prim_reduce()`'s `reductor` no longer has to name its arguments `lhs` and
+  `rhs`. They were passed by name, so `function(a, b)` failed with
+  `unused arguments (lhs = ..., rhs = ...)`; they are now matched positionally,
+  as `prim_scatter()` already matched its `update_computation`.
+* `prim_reduce_any()` / `prim_reduce_all()` (and `nv_reduce_any()` /
+  `nv_reduce_all()`) now reject a non-boolean input when the call is traced.
+  Type inference declared a `bool` output whatever the input was, so an
+  integer operand reached the lowering and failed with `Data types of inputs
+  and init_values must match`.
+
 ## Features
 
 * New `nv_scan()` runs a fixed-length loop that threads a carry through a
