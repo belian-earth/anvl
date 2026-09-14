@@ -785,9 +785,14 @@ nv_mod <- function(lhs, rhs) {
   lhs <- args[[1L]]
   rhs <- args[[2L]]
   rest <- nv_remainder(lhs, rhs)
-  # Avoid rounding errors when we can rest is already correct
-  shifted <- nv_ifelse((rest != 0) & ((rest < 0) != (rhs < 0)), rest + rhs, rest)
-  nv_ifelse(nv_abs(shifted) >= nv_abs(rhs), 0, shifted)
+  if (is_dtype_uint(peek_dtype(lhs))) {
+    # Neither operand can be negative, so the truncating remainder already
+    # floors and there is nothing to shift. `nv_abs()` below has no unsigned
+    # lowering either.
+    return(rest)
+  }
+  shifted <- nv_ifelse((rest != 0L) & ((rest < 0L) != (rhs < 0L)), rest + rhs, rest)
+  nv_ifelse(nv_abs(shifted) >= nv_abs(rhs), 0L, shifted)
 }
 
 #' @title Flooring Division
