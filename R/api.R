@@ -2697,13 +2697,17 @@ nv_scan <- function(init, body, xs = NULL, length = NULL, reverse = FALSE) {
     if (!base::length(xs_flat)) {
       cli_abort("{.arg xs} must contain at least one array")
     }
-    lens <- vapply(xs_flat, function(x) {
-      s <- shape(x)
-      if (!base::length(s)) {
-        cli_abort("every leaf of {.arg xs} must have at least one axis")
-      }
-      as.integer(s[[1L]])
-    }, integer(1L))
+    lens <- vapply(
+      xs_flat,
+      function(x) {
+        s <- shape(x)
+        if (!base::length(s)) {
+          cli_abort("every leaf of {.arg xs} must have at least one axis")
+        }
+        as.integer(s[[1L]])
+      },
+      integer(1L)
+    )
     n <- lens[[1L]]
     if (!all(lens == n)) {
       cli_abort("all leaves of {.arg xs} must agree on the size of axis 1")
