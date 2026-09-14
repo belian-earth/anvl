@@ -167,7 +167,7 @@ AnvlGraph <- function(
 #' Descriptor of an [`AnvlGraph`]. This is a mutable class.
 #' @param calls (`list(PrimitiveCall)`)\cr
 #'   The primitive calls that make up the graph.
-#' @param tensor_to_gval (`hashtab`)\cr
+#' @param array_to_gval (`hashtab`)\cr
 #'   Mapping: `AnvlArray` -> `GraphValue`
 #' @param gval_to_box (`hashtab`)\cr
 #'   Mapping: `GraphValue` -> `GraphBox`
@@ -204,7 +204,7 @@ AnvlGraph <- function(
 #' @export
 GraphDescriptor <- function(
   calls = list(),
-  tensor_to_gval = NULL,
+  array_to_gval = NULL,
   gval_to_box = NULL,
   constants = list(),
   in_tree = NULL,
@@ -226,7 +226,7 @@ GraphDescriptor <- function(
   if (length(calls)) {
     env$calls$madd(.list = calls)
   }
-  env$data_to_gval <- tensor_to_gval %||% hashtab()
+  env$data_to_gval <- array_to_gval %||% hashtab()
   env$gval_to_box <- gval_to_box %||% hashtab()
   env$constants <- constants
   env$in_tree <- in_tree
@@ -490,7 +490,7 @@ maybe_box_input <- function(x, desc, mode) {
 # Strip data from a (possibly concrete) array aval, returning a pure
 # AbstractArray with the same dtype and shape.
 abstract_aval <- function(aval) {
-  if (is_concrete_tensor(aval)) {
+  if (is_concrete_array(aval)) {
     AbstractArray(dtype = aval$dtype, shape = aval$shape)
   } else {
     aval
@@ -567,7 +567,7 @@ get_box_or_register_const <- function(desc, x) {
   # Now, we create the new box and register it, so if we see it again, we can return it immediately.
   new_box <- GraphBox(x, desc)
 
-  if (is_concrete_tensor(x$aval)) {
+  if (is_concrete_array(x$aval)) {
     desc$data_to_gval[[x$aval$data]] <- x
   }
   desc$gval_to_box[[x]] <- new_box
