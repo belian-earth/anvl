@@ -1349,9 +1349,9 @@ prim_min <- new_primitive("minimum", make_binary_op(stablehlo::infer_types_minim
 
 #' @title Primitive Remainder
 #' @description
-#' Element-wise remainder.
-#' Result has sign of the divident, which differs from base R's `%%`, which is available
-#' via [`nv_mod()`] and has sign of divisor.
+#' Element-wise remainder. The result has the sign of the dividend, which is
+#' what StableHLO's `remainder` does. Base R's `%%` takes the sign of the
+#' divisor instead and is available via [`nv_mod()`].
 #' @template params_prim_lhs_rhs_numeric
 #' @template return_prim_binary
 #' @templateVar primitive_id remainder
@@ -1370,14 +1370,14 @@ prim_remainder <- new_primitive(
 
 #' @title Primitive And
 #' @description
-#' Element-wise logical AND.
+#' Element-wise bitwise AND, which for a boolean array is the logical AND.
 #' @template params_prim_lhs_rhs_intlike
 #' @template return_prim_binary
 #' @templateVar primitive_id and
 #' @template section_rules
 #' @section StableHLO:
 #' Lowers to [hlo_and()].
-#' @seealso [nv_and()], `&`
+#' @seealso [nv_and()]
 #' @examplesIf pjrt::plugins_downloaded()
 #' x <- nv_array(c(TRUE, FALSE, TRUE))
 #' y <- nv_array(c(TRUE, TRUE, FALSE))
@@ -1387,7 +1387,7 @@ prim_and <- new_primitive("and", make_binary_op(stablehlo::infer_types_and))
 
 #' @title Primitive Not
 #' @description
-#' Element-wise logical NOT.
+#' Element-wise bitwise NOT, which for a boolean array is the logical NOT.
 #' @param x ([`arrayish`])\cr
 #'   Arrayish value of data type boolean, integer, or unsigned integer.
 #' @template return_prim_unary
@@ -1404,14 +1404,14 @@ prim_not <- new_primitive("not", make_unary_op(stablehlo::infer_types_not))
 
 #' @title Primitive Or
 #' @description
-#' Element-wise logical OR.
+#' Element-wise bitwise OR, which for a boolean array is the logical OR.
 #' @template params_prim_lhs_rhs_intlike
 #' @template return_prim_binary
 #' @templateVar primitive_id or
 #' @template section_rules
 #' @section StableHLO:
 #' Lowers to [hlo_or()].
-#' @seealso [nv_or()], `|`
+#' @seealso [nv_or()]
 #' @examplesIf pjrt::plugins_downloaded()
 #' x <- nv_array(c(TRUE, FALSE, TRUE))
 #' y <- nv_array(c(TRUE, TRUE, FALSE))
@@ -1421,7 +1421,7 @@ prim_or <- new_primitive("or", make_binary_op(stablehlo::infer_types_or))
 
 #' @title Primitive Xor
 #' @description
-#' Element-wise logical XOR.
+#' Element-wise bitwise XOR, which for a boolean array is the logical XOR.
 #' @template params_prim_lhs_rhs_intlike
 #' @template return_prim_binary
 #' @templateVar primitive_id xor

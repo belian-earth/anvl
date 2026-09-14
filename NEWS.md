@@ -15,10 +15,16 @@
 * `default_backend()` is now called `active_backend()`.
 * There is now exactly one backend used at a time and it is configured via the
   `anvl.backend` option.
+  With this change the `device_arg` parameter was removed from `jit()` as it is no longer needed.
 * A `Shape` is now represented as an integer vector.
+* The operators `&`, `|`,  `!`, as well as the generics `sum()` and `all()`
+  now require a boolean input array, improving consistency with base R.
+* The method for `round` was removed, as `digits` is currently not supported.
 
 ## Features
 
+* The reductions (`sum()`, `prod()`, `max()`, `min()`, `range()`, `any()`,
+  `all()`) now work with multiple data inputs.
 * The default data types for floating point numbers and integers can now be
   configured via the `anvl.default_dtypes` field.
   You can configure this for a specific scope via `local_default_dtypes()`
@@ -27,12 +33,32 @@
   `with_dtypes()`.
 * New `nv_linspace()` and `nv_linspace_like()`, replacing `nv_seq()` with
   a provided `steps` argument.
-* `as.vector` now and returns `bit64::integer64`
-  for integer types that don't fit into R's 32 bit integers.
-  With this chane the `device_arg` parameter was removed from `jit()` as it is no longer needed.
+* `as.vector()` now returns a `bit64::integer64` for integer data types that
+  do not fit into R's 32 bit integers.
+* New `nv_floor_div()` for flooring (integer) division, and the `%/%` operator
+  now works on arrays.
+* Added support for more generics:
+  * Reversing an array via `rev`.
+  * Concatenating vectors via `c()`.
+  * Floor division via `nv_floor_div`/`%/%`.
+  * Trigonometric functions `sinpi`, `cospi` and `tanpi` and their corresponding `nv_*` functions.
+  * The `gamma` generic.
+* `log(x, base)` now accepts its second argument like in base R.
+* New `nv_range()` returns the minimum and the maximum of an array, stacked
+  along a new first axis, and is what the `range()` uses.
+* The `nv_*` functions that compute in floating point (`nv_sqrt()`,
+  `nv_log()`, `nv_atan2()`, ...) now compute an integer array at the default
+  float data type.
+* `nv_floor()`, `nv_ceiling()`, `nv_trunc()` and `nv_round()` return an
+  integer array unchanged, like base R does.
+* Improved documentation of API functions and primitives.
 
 ## Bug fixes
 
+* Subsetting with `drop` (e.g. `x[1, , drop = FALSE]`) now gives a better
+  error message, as `drop` is not supported.
+* `nv_quantile()` and `nv_median()` now compute at the default float data
+  type for a non-float input.
 * `as.vector()` now works correctly for `AnvlArray`s that are converted
   to `bit64::integer64`. It used to drop that class along with the shape,
   exposing the raw 64-bit pattern as a double.
@@ -50,6 +76,8 @@
   `rhs`. They were passed by name, so `function(a, b)` failed with
   `unused arguments (lhs = ..., rhs = ...)`; they are now matched positionally,
   as `prim_scatter()` already matched its `update_computation`.
+* Improved the numerics for `nv_mod()`.
+* The gradient of `nv_gamma()` is now correct for positive whole numbers.
 * `prim_reduce_any()` / `prim_reduce_all()` (and `nv_reduce_any()` /
   `nv_reduce_all()`) now reject a non-boolean input when the call is traced.
   Type inference declared a `bool` output whatever the input was, so an
