@@ -120,7 +120,7 @@ describe("nv_scan", {
   it("stacks boolean and integer outputs", {
     x <- nv_array(c(3L, -1L, 4L, -1L, 5L), dtype = "i32")
     res <- nv_scan(
-      init = nv_scalar(0L),
+      init = nv_scalar(0L, dtype = "i32"),
       body = function(carry, v) {
         s <- carry + v
         list(carry = s, out = list(pos = v > 0L, sum = s))
