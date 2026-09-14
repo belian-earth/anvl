@@ -2786,13 +2786,7 @@ nv_scan <- function(init, body, xs = NULL, length = NULL, reverse = FALSE) {
   bufs <- lapply(out_flat, function(leaf) {
     leaf <- as_anvl_array(leaf)
     dt <- dtype(leaf)
-    zero <- if (inherits(dt, "BooleanType")) {
-      FALSE
-    } else if (inherits(dt, "IntegerType")) {
-      0L
-    } else {
-      0
-    }
+    zero <- switch(substr(as.character(dt), 1L, 1L), "b" = FALSE, "i" = , "u" = 0L, 0)
     nv_fill(zero, shape = as.integer(c(n, shape(leaf))), dtype = dt)
   })
   bufs <- write_step(bufs, out_flat, nv_scalar(first_i))

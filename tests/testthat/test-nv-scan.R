@@ -117,6 +117,44 @@ describe("nv_scan", {
     expect_equal(as.numeric(as.array(out)), cumsum(c(1, 2, 3, 4)))
   })
 
+  it("stacks boolean and integer outputs", {
+    x <- nv_array(c(3L, -1L, 4L, -1L, 5L), dtype = "i32")
+    res <- nv_scan(
+      init = nv_scalar(0L),
+      body = function(carry, v) {
+        s <- carry + v
+        list(carry = s, out = list(pos = v > 0L, sum = s))
+      },
+      xs = x
+    )
+    expect_equal(dtype(res$out$pos), as_dtype("bool"))
+    expect_equal(dtype(res$out$sum), as_dtype("i32"))
+    expect_equal(as.logical(as.array(res$out$pos)), c(TRUE, FALSE, TRUE, FALSE, TRUE))
+    expect_equal(as.integer(as.array(res$out$sum)), cumsum(c(3L, -1L, 4L, -1L, 5L)))
+  })
+
+  it("validates its arguments", {
+    x <- nv_array(c(1, 2, 3, 4))
+    expect_error(nv_scan(nv_scalar(0), body = "not a function", xs = x), "must be a function")
+    expect_error(nv_scan(nv_scalar(0), cumsum_body, xs = x, reverse = NA), "TRUE or FALSE")
+    expect_error(nv_scan(nv_scalar(0), cumsum_body, xs = list()), "at least one array")
+    expect_error(nv_scan(nv_scalar(0), cumsum_body, length = 0L), "positive integer")
+  })
+
+  it("errors when the out structure changes between steps", {
+    step <- 0L
+    body <- function(carry, v) {
+      step <<- step + 1L
+      s <- carry + v
+      # the first (peeled) step emits one leaf, every later step two
+      list(carry = s, out = if (step == 1L) s else list(s, s))
+    }
+    expect_error(
+      nv_scan(nv_scalar(0), body, xs = nv_array(c(1, 2, 3))),
+      "same .*out.* structure at every step"
+    )
+  })
+
   it("errors clearly on contract violations", {
     x <- nv_array(c(1, 2, 3, 4))
     expect_error(
