@@ -87,3 +87,26 @@ describe("eager code", {
     expect_error(nv_fill_like(x, 0), "belongs to the .*quickr.* backend")
   })
 })
+
+test_that("backend constructors handle raw payloads in new_data", {
+  # Exercised through the constructors rather than nv_array(): the registered
+  # backends are built when the package is installed, so only a freshly
+  # constructed backend shows the row_major forwarding and the rejections.
+  skip_if(!is_cpu())
+  payload <- writeBin(as.numeric(1:6), raw(), size = 4L)
+  be <- AnvlBackendPjrt()
+  x_row <- be$new_data(payload, dtype = "f32", shape = c(2L, 3L), device = NULL, row_major = TRUE)
+  x_col <- be$new_data(payload, dtype = "f32", shape = c(2L, 3L), device = NULL)
+  expect_equal(as_array(x_row), matrix(1:6, 2L, 3L, byrow = TRUE))
+  expect_equal(as_array(x_col), matrix(1:6, 2L, 3L))
+  # non-raw data takes the existing path unchanged
+  x_num <- be$new_data(1:6, dtype = "i32", shape = c(2L, 3L), device = NULL)
+  expect_equal(as_array(x_num), matrix(1:6, 2L, 3L))
+  expect_equal(dtype(x_num), as_dtype("i32"))
+
+  skip_if_no_quickr()
+  expect_error(
+    AnvlBackendQuickr()$new_data(payload, dtype = "f32", shape = c(2L, 3L), device = NULL),
+    "quickr"
+  )
+})
