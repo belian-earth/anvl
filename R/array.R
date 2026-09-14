@@ -884,7 +884,7 @@ format.IotaArray <- function(x, ...) {
   sprintf(
     "IotaArray(shape=%s, dtype=%s, axis=%s, start=%s)",
     shape2string(x$shape),
-    repr(x$dtype),
+    as.character(x$dtype),
     x$axis,
     x$start
   )
@@ -949,21 +949,21 @@ neq_type <- function(e1, e2) {
 
 #' @export
 repr.AbstractArray <- function(x, ...) {
-  sprintf("%s[%s]", repr(x$dtype), repr(x$shape))
+  sprintf("%s[%s]", as.character(x$dtype), repr(x$shape))
 }
 
 #' @export
 format.AbstractArray <- function(x, ...) {
   sprintf(
     "AbstractArray(dtype=%s, shape=%s)",
-    repr(x$dtype),
+    as.character(x$dtype),
     repr(x$shape)
   )
 }
 
 #' @export
 format.ConcreteArray <- function(x, ...) {
-  sprintf("ConcreteArray(%s, %s)", repr(x$dtype), shape2string(x$shape))
+  sprintf("ConcreteArray(%s, %s)", as.character(x$dtype), shape2string(x$shape))
 }
 
 #' @export
@@ -973,7 +973,7 @@ format.LiteralArray <- function(x, ...) {
   } else {
     x$data
   }
-  sprintf("LiteralArray(%s, %s, %s)", data_str, repr(x$dtype), shape2string(x$shape))
+  sprintf("LiteralArray(%s, %s, %s)", data_str, as.character(x$dtype), shape2string(x$shape))
 }
 
 #' @export
@@ -991,7 +991,7 @@ print.ConcreteArray <- function(x, ...) {
 
 #' @export
 format.AnvlArray <- function(x, ...) {
-  sprintf("AnvlArray(dtype=%s, shape=%s)", repr(dtype(x)), paste(shape(x), collapse = "x"))
+  sprintf("AnvlArray(dtype=%s, shape=%s)", as.character(dtype(x)), paste(shape(x), collapse = "x"))
 }
 
 #' @export

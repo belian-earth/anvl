@@ -1034,7 +1034,7 @@ prim_reduce <- new_primitive(
     if (out_aval$dtype != op_dtype) {
       cli_abort(c(
         "{.arg reductor} must return a value with the same dtype as {.arg x}.",
-        x = "Got reductor output dtype {.field {repr(out_aval$dtype)}}."
+        x = "Got reductor output dtype {.field {as.character(out_aval$dtype)}}."
       ))
     }
 
