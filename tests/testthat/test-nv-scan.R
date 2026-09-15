@@ -105,7 +105,7 @@ describe("nv_scan", {
     expect_equal(as.numeric(as.array(res$carry)), 10)
   })
 
-  it("handles length 1 without a loop", {
+  it("handles length 1", {
     res <- nv_scan(nv_scalar(0), cumsum_body, xs = nv_array(7))
     expect_equal(as.numeric(as.array(res$out)), 7)
     expect_equal(as.numeric(as.array(res$carry)), 7)
@@ -139,20 +139,6 @@ describe("nv_scan", {
     expect_error(nv_scan(nv_scalar(0), cumsum_body, xs = x, reverse = NA), "TRUE or FALSE")
     expect_error(nv_scan(nv_scalar(0), cumsum_body, xs = list()), "at least one array")
     expect_error(nv_scan(nv_scalar(0), cumsum_body, length = 0L), "positive integer")
-  })
-
-  it("errors when the out structure changes between steps", {
-    step <- 0L
-    body <- function(carry, v) {
-      step <<- step + 1L
-      s <- carry + v
-      # the first (peeled) step emits one leaf, every later step two
-      list(carry = s, out = if (step == 1L) s else list(s, s))
-    }
-    expect_error(
-      nv_scan(nv_scalar(0), body, xs = nv_array(c(1, 2, 3))),
-      "same .*out.* structure at every step"
-    )
   })
 
   it("errors clearly on contract violations", {

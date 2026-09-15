@@ -57,5 +57,5 @@ nv_scan(
 \dontshow{\}) # examplesIf}
 }
 \seealso{
-\code{\link[=nv_while]{nv_while()}}, \code{\link[=nv_cumsum]{nv_cumsum()}} for fixed associative scans.
+\code{\link[=prim_scan]{prim_scan()}}, \code{\link[=nv_while]{nv_while()}}, \code{\link[=nv_cumsum]{nv_cumsum()}} for fixed associative scans.
 }

@@ -2681,7 +2681,7 @@ nv_while <- prim_while
 #' @return `list(carry = , out = )`: the final carry (same structure as
 #'   `init`) and the stacked outputs (structure of `body`'s `out`, each
 #'   leaf gaining a leading axis of size `length`).
-#' @seealso [nv_while()], [nv_cumsum()] for fixed associative scans.
+#' @seealso [prim_scan()], [nv_while()], [nv_cumsum()] for fixed associative scans.
 #' @examplesIf pjrt::plugins_downloaded()
 #' # cumulative sum along axis 1
 #' x <- nv_array(c(1, 2, 3, 4))
@@ -2699,8 +2699,8 @@ nv_scan <- function(init, body, xs = NULL, length = NULL, reverse = FALSE) {
   if (!is.logical(reverse) || base::length(reverse) != 1L || is.na(reverse)) {
     cli_abort("{.arg reverse} must be TRUE or FALSE")
   }
+  init <- map_tree(init, as_anvl_array)
 
-  # -- trip count and per-step input slicing -----------------------------------
   if (!is.null(xs)) {
     xs <- map_tree(xs, as_anvl_array)
     xs_flat <- flatten(xs)
@@ -2735,95 +2735,10 @@ nv_scan <- function(init, body, xs = NULL, length = NULL, reverse = FALSE) {
     if (is.na(n) || n < 1L) {
       cli_abort("{.arg length} must be a positive integer")
     }
+    xs <- list()
   }
 
-  init_tree <- build_tree(init)
-
-  # read the step-`idx` slice of every xs leaf (unit leading axis dropped)
-  read_step <- function(idx) {
-    if (is.null(xs)) {
-      return(NULL)
-    }
-    map_tree(xs, function(x) {
-      s <- shape(x)
-      starts <- c(list(idx), rep(list(nv_scalar(1L)), base::length(s) - 1L))
-      sl <- do.call(
-        prim_dynamic_slice,
-        c(list(x), starts, list(slice_sizes = as.integer(c(1L, s[-1L]))))
-      )
-      nv_reshape(sl, as.integer(s[-1L]))
-    })
-  }
-
-  check_step <- function(step) {
-    if (
-      !is.list(step) ||
-        is.null(names(step)) ||
-        !setequal(names(step), c("carry", "out")) ||
-        anyDuplicated(names(step))
-    ) {
-      cli_abort("{.arg body} must return {.code list(carry = , out = )}")
-    }
-    if (!pjrt::tree_equal(build_tree(step$carry), init_tree)) {
-      cli_abort(
-        "{.arg body} must return a carry with the same structure as {.arg init}"
-      )
-    }
-  }
-
-  # write one step's out leaves into the buffers at position `idx`
-  write_step <- function(bufs, out_leaves, idx) {
-    Map(
-      function(buf, leaf) {
-        leaf <- as_anvl_array(leaf)
-        s <- shape(leaf)
-        upd <- nv_reshape(leaf, as.integer(c(1L, s)))
-        starts <- c(list(idx), rep(list(nv_scalar(1L)), base::length(s)))
-        do.call(prim_dynamic_update_slice, c(list(buf, upd), starts))
-      },
-      bufs,
-      out_leaves
-    )
-  }
-
-  # -- peel the first step to learn the out shapes/dtypes ----------------------
-  first_i <- if (reverse) n else 1L
-  step1 <- body(init, read_step(nv_scalar(first_i)))
-  check_step(step1)
-  out_tree <- build_tree(step1$out)
-  out_flat <- flatten(step1$out)
-
-  bufs <- lapply(out_flat, function(leaf) {
-    leaf <- as_anvl_array(leaf)
-    dt <- dtype(leaf)
-    zero <- switch(substr(as.character(dt), 1L, 1L), "b" = FALSE, "i" = , "u" = 0L, 0)
-    nv_fill(zero, shape = as.integer(c(n, shape(leaf))), dtype = dt)
-  })
-  bufs <- write_step(bufs, out_flat, nv_scalar(first_i))
-
-  if (n == 1L) {
-    return(list(carry = step1$carry, out = unflatten(out_tree, bufs)))
-  }
-
-  # -- remaining n - 1 steps as a while loop ------------------------------------
-  res <- nv_while(
-    init = list(i = nv_scalar(2L), carry = step1$carry, out = bufs),
-    cond = function(i, carry, out) i <= n,
-    body = function(i, carry, out) {
-      idx <- if (reverse) (n + 1L) - i else i
-      st <- body(carry, read_step(idx))
-      check_step(st)
-      if (!pjrt::tree_equal(build_tree(st$out), out_tree)) {
-        cli_abort("{.arg body} must emit the same {.code out} structure at every step")
-      }
-      list(
-        i = i + nv_scalar(1L),
-        carry = st$carry,
-        out = write_step(out, flatten(st$out), idx)
-      )
-    }
-  )
-  list(carry = res$carry, out = unflatten(out_tree, res$out))
+  prim_scan(init, xs, body, length = n, reverse = reverse)
 }
 
 ## Additional math functions ---------------------------------------------------
