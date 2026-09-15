@@ -26,11 +26,9 @@
 ## Features
 
 * `nv_array()` accepts a `raw()` vector holding the native byte payload of
-  `prod(shape)` elements of `dtype` (both then required). The bytes reach the
-  device without conversion through R doubles, which also gives exact uploads
-  for unsigned dtypes. `byrow` selects row-major element order for the
-  payload. Only supported on the `"pjrt"` backend; the inverse direction is
-  the existing `as_raw()`.
+  `prod(shape)` elements of `dtype` (both then required); `byrow` selects
+  row-major element order for the payload. Only supported on the `"pjrt"`
+  backend; the inverse direction is the existing `as_raw()`.
 * The reductions (`sum()`, `prod()`, `max()`, `min()`, `range()`, `any()`,
   `all()`) now work with multiple data inputs.
 * The default data types for floating point numbers and integers can now be

@@ -41,8 +41,7 @@
 #'   `integer()`, `double()`, or `logical()` scalar, vector, or array.
 #'   Alternatively a `raw()` vector holding the native little-endian byte
 #'   payload of `prod(shape)` elements of `dtype`; both `dtype` and `shape`
-#'   are then required, and the bytes are uploaded without conversion
-#'   through R numeric types (only supported on the `"pjrt"` backend).
+#'   are then required (only supported on the `"pjrt"` backend).
 #'   Raw payloads are read in column-major element order, or row-major
 #'   with `byrow = TRUE`.
 #' @param dtype (`NULL` | `character(1)` | [`DataType`])\cr
