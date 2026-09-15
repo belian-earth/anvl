@@ -2350,3 +2350,23 @@ describe("the default integer", {
     expect_equal(as_array(factored$permutation), at_i32$permutation)
   })
 })
+
+test_that("assert_shapevec() rejects what it cannot represent", {
+  expect_error(nv_fill(1, shape = 2.7), "must contain whole numbers")
+  expect_error(nv_fill(1, shape = 1e10), "must contain whole numbers")
+  expect_error(nv_fill(1, shape = Inf), "must contain whole numbers")
+  expect_error(nv_fill(1, shape = c(-1L, 2L)), "must not contain a negative axis size")
+  expect_equal(shape(nv_fill(1, shape = c(0L, 3L))), c(0L, 3L))
+  expect_error(nv_fill(1, shape = c(-1L, 2L)), "`shape`")
+})
+
+test_that("a constructor that fills internally works at every data type", {
+  # These fill at a data type they do not know statically, writing a plain `0`
+  # or `1`, so they are what `assert_fill_value()` has to keep accepting.
+  expect_equal(as.vector(nv_eye(2L, dtype = "bool")), c(TRUE, FALSE, FALSE, TRUE))
+  expect_equal(dtype(nv_eye(2L, dtype = "i32")), as_dtype("i32"))
+  expect_equal(as.integer(nv_diag(nv_array(c(1L, 2L)))), c(1L, 0L, 0L, 2L))
+  b <- nv_array(rep(TRUE, 4L), shape = c(2L, 2L))
+  expect_equal(as.vector(nv_tril(b)), c(TRUE, TRUE, FALSE, TRUE))
+  expect_equal(as.vector(nv_triu(b)), c(TRUE, FALSE, TRUE, TRUE))
+})
