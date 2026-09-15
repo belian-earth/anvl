@@ -256,6 +256,9 @@ check_jit_options <- function(options) {
   if (!length(options)) {
     return(invisible(NULL))
   }
+  # Reading every backend's `jit` formals builds every registered backend (see
+  # register_backend()); only this path does, and building one is just
+  # assembling its methods into a list.
   known <- sort(unique(unlist(lapply(names(globals$backends), backend_jit_options))))
   names <- rlang::names2(options)
   if (!all(nzchar(names))) {
