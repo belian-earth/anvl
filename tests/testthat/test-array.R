@@ -7,6 +7,15 @@ test_that("array", {
   expect_equal(as_array(x), array(1:4, c(4, 1)))
 })
 
+test_that("nv_array asks for a shape when the data is empty", {
+  # Which axis is empty is not in the data: `0`, `c(2, 0)` and `c(0, 3)` all
+  # hold no elements.
+  expect_error(nv_array(numeric(0)), "must be provided when")
+  expect_error(nv_array(integer(0)), "must be provided when")
+  expect_shape(nv_array(numeric(0), shape = 0L), 0L)
+  expect_shape(nv_array(numeric(0), shape = c(2L, 0L)), c(2L, 0L))
+})
+
 test_that("device returns the pjrt device", {
   x <- nv_array(1, device = "cpu")
   expect_true(device(x) == pjrt::as_pjrt_device("cpu"))
@@ -372,6 +381,11 @@ test_that("default floating dtype is f64 for quickr", {
 })
 
 test_that("nv_array_like inherits dtype, shape, device, backend from like", {
+  # An R value has no data type to take defaults from, and the message used to
+  # be about the value rather than about `like`.
+  expect_error(nv_array_like(3, c(1L, 2L)), "`like` must be an array")
+  expect_error(nv_fill_like(3, 1), "`like` must be an array")
+
   like <- nv_array(c(1L, 2L, 3L), dtype = "i16")
   out <- nv_array_like(like, c(7L, 8L, 9L))
   expect_dtype(out, dtype(like))
