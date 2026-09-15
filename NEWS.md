@@ -64,7 +64,7 @@
 
 * `nv_quantile()` and `nv_median()` select the needed order statistics with
   `top_k` instead of a full sort when every requested quantile lies in the
-  lower half of the axis. Results are unchanged.
+  same half of the axis. Results are unchanged.
 
 ## Bug fixes
 
