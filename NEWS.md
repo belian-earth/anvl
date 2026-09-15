@@ -32,6 +32,10 @@
   named list with elements `state` and `values` instead of an unnamed pair,
   and `prim_top_k()`, `prim_cummax()` and `prim_cummin()` name theirs
   `values` and `indices`.
+* `nv_array()` accepts a `raw()` vector holding the native byte payload of
+  `prod(shape)` elements of `dtype` (both then required); `byrow` selects
+  row-major element order for the payload. Only supported on the `"pjrt"`
+  backend; the inverse direction is the existing `as_raw()`.
 * The reductions (`sum()`, `prod()`, `max()`, `min()`, `range()`, `any()`,
   `all()`) now work with multiple data inputs.
 * The default data types for floating point numbers and integers can now be
