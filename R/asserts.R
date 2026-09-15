@@ -248,6 +248,16 @@ assert_float_dtype <- function(x, arg = rlang::caller_arg(x), hint = NULL) {
   dt
 }
 
+assert_some_arrays <- function(..., call = rlang::caller_env()) {
+  if (...length() == 0L) {
+    cli_abort(
+      "At least one array is required, but none was given.",
+      call = call
+    )
+  }
+  invisible(NULL)
+}
+
 assert_linalg_matrix <- function(x, arg, square = FALSE) {
   s <- shape(x)
   if (length(s) != 2L) {

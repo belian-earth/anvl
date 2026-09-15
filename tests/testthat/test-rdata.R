@@ -599,9 +599,12 @@ describe("an R value in an nv_* function", {
     out <- nv_solve(a, matrix(c(2, 4), ncol = 1L))
     expect_dtype(out, "f64")
     expect_equal(as.vector(out), c(1, 2))
-    # ... and two typed arrays that disagree are still rejected, rather than one
-    # of them being widened.
-    expect_error(nv_solve(a, nv_array(matrix(c(2, 4), ncol = 1L), dtype = "f32")))
+    # ... and two typed arrays that disagree now meet at their common data
+    # type, as they do in `nv_matmul()`. They used to be refused, because the
+    # primitive's "operands must already agree" passed straight through.
+    widened <- nv_solve(a, nv_array(matrix(c(2, 4), ncol = 1L), dtype = "f32"))
+    expect_dtype(widened, "f64")
+    expect_equal(as.vector(widened), c(1, 2))
     out <- nv_triangular_solve(a, matrix(c(2, 4), ncol = 1L))
     expect_dtype(out, "f64")
   })
@@ -656,6 +659,15 @@ describe("staging an R value out of its own category", {
     )
   })
 
+  it("names the data type to convert through in its own category", {
+    local_registered_default_dtypes()
+    w <- expect_warning(nv_convert(1.9, "i32"), class = "anvl_staging_widens_warning")
+    # Rendering the message is what a printed warning or a vignette does, and it
+    # is the only place a `{}` expression naming something out of scope shows up.
+    msg <- gsub("\\s+", " ", conditionMessage(w))
+    expect_match(msg, 'nv_convert(nv_convert(x, "f32"), "i32")', fixed = TRUE)
+  })
+
   it("stays quiet where the staging introduces nothing", {
     # An R integer stages at i32 and a logical at bool -- their own defaults, so
     # nothing is brought in that the value would not have materialized at
@@ -684,6 +696,12 @@ describe("the default float", {
     )
     local_default_dtypes(c(float = "f64"))
     expect_no_warning(nv_convert(1.5, "i32"))
+    # An R integer staged through `i32` warns wherever the default integer is
+    # narrower than that.
+    with_default_dtypes(
+      c(int = "i8"),
+      expect_warning(nv_convert(1L, "f32"), class = "anvl_staging_widens_warning")
+    )
   })
 
   it("decides what an R double materializes at in a trace", {
