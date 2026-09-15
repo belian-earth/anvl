@@ -12,7 +12,7 @@
 #' [`naxes()`][tengen::naxes] for the number of axes and
 #' [`shape()`][tengen::shape] for the axis sizes. We speak of the *size of an
 #' axis* rather than an array's "dimensions", as the latter is generally
-#' overloaded as it is used to refer to both the axis and it's size.
+#' overloaded as it is used to refer to both the axis and its size.
 #'
 #'
 #' @section Extractors:
@@ -41,7 +41,7 @@
 #'   `integer()`, `double()`, or `logical()` scalar, vector, or array.
 #' @param dtype (`NULL` | `character(1)` | [`DataType`])\cr
 #'   One of `r roxy_dtypes()` or a [`tengen::DataType`].
-#'   The default (`NULL`) uses the data type the R value commits to (see
+#'   The default (`NULL`) uses the data type the R value takes (see
 #'   [`default_dtypes()`]). This depends on the backend.
 #'   For the default `"pjrt"` backend, `double`s become `f32`, `integer`
 #'   `i32` and `logical`s `bool`.
@@ -168,7 +168,7 @@ nv_array <- function(
   }
   if (currently_tracing() && is.null(device)) {
     # A constant of the trace: it belongs to the backend being traced for, and
-    # commits to the defaults the trace is pinned to.
+    # materializes at the defaults the trace is pinned to.
     dtype <- resolve_default_dtype(data, dtype)
     return(globals$backends[["plain"]]$new_data(data, dtype, shape, device))
   }
@@ -189,7 +189,7 @@ nv_array <- function(
 #' and can additionally apply type promotion rules via the `.promote` argument.
 #'
 #' @param x ([`arrayish`])\cr
-#'   Input to standardize.
+#'   Input to canonicalize.
 #' @param ... ([`arrayish`])\cr
 #'   Inputs to align. Name them to be able to point `.promote` at one of them.
 #' @param device (`NULL` | [`device`])\cr
@@ -210,7 +210,7 @@ NULL
 #' @export
 as_anvl_array <- function(x, device = NULL) {
   if (is_box(x)) {
-    return(commit_rdata_box(x))
+    return(materialize_rdata_box(x))
   }
   if (!is_arrayish(x)) {
     cli_abort("Expected arrayish input, but got {.cls {class(x)}}")
@@ -228,7 +228,7 @@ as_anvl_array <- function(x, device = NULL) {
   # A bare R value: it has no dtype of its own, and nothing here says what it
   # should be, so it takes its default.
   if (currently_tracing()) {
-    return(commit_rdata_box(maybe_box_arrayish(x)))
+    return(materialize_rdata_box(maybe_box_arrayish(x)))
   }
   if (is_valid_r_lit(x)) {
     return(nv_scalar(x, device = device))
@@ -244,8 +244,8 @@ as_anvl_arrays <- function(..., .promote = NULL) {
   if (is.null(.promote)) {
     return(lapply(args, as_anvl_array, device = aligned$device))
   }
-  # We directly realize at the target instead of materializing at the default dtype
-  # and then converting. This keeps the precision in `nv_add(nv_scalar(1, "f64"), pi)`
+  # Materialize directly at the target rather than at the default dtype and then
+  # converting. This keeps the precision in `nv_add(nv_scalar(1, "f64"), pi)`
   # because `pi` does NOT round-trip through f32.
   dtypes <- resolve_promote(.promote, args)
   for (i in seq_along(args)) {
@@ -253,7 +253,7 @@ as_anvl_arrays <- function(..., .promote = NULL) {
       # No conversion/materialization requested
       as_anvl_array(args[[i]], device = aligned$device)
     } else {
-      realize_at(args[[i]], dtype = dtypes[[i]], device = aligned$device)
+      materialize_at(args[[i]], dtype = dtypes[[i]], device = aligned$device)
     }
   }
   args
@@ -306,7 +306,7 @@ align_arrayish <- function(args) {
 # tracing, the R value itself otherwise -- is built from its R data, so it
 # arrives with every digit it had; anything that already has a dtype is
 # converted.
-realize_at <- function(x, dtype, device = NULL) {
+materialize_at <- function(x, dtype, device = NULL) {
   if (currently_tracing() && is_valid_r(x)) {
     return(build_r_at(x, dtype))
   }
@@ -788,7 +788,7 @@ ConcreteArray <- function(data) {
 #' [`nv_fill()`] to create a constant.
 #'
 #' @section Lowering:
-#' `LiteralArray`s become constants inlined into the stableHLO program.
+#' `LiteralArray`s become constants inlined into the StableHLO program.
 #' I.e., they lower to [`hlo_tensor()`].
 #'
 #' @param data (`double(1)` | `integer(1)` | `logical(1)` | [`AnvlArray`])\cr
@@ -816,7 +816,7 @@ ConcreteArray <- function(data) {
 #' @export
 LiteralArray <- function(data, shape, dtype = default_dtype(data)) {
   if (!is_valid_r_lit(data) && !inherits(data, "AnvlArray")) {
-    cli_abort("LiteralArrays expect scalars or AnvlArray")
+    cli_abort("{.arg data} must be a scalar or a one-element {.cls AnvlArray}.")
   }
   if (inherits(data, "AnvlArray")) {
     if (prod(shape(data)) != 1L) {
@@ -843,7 +843,7 @@ LiteralArray <- function(data, shape, dtype = default_dtype(data)) {
 #' Inherits from [`AbstractArray`].
 #'
 #' @section Lowering:
-#' When lowering to stableHLO, these become `iota` operations that generate the integer sequence
+#' When lowering to StableHLO, these become `iota` operations that generate the integer sequence
 #' so they do not need to actually hold the data in the executable, similar to `ALTREP`s in R.
 #' It lowers to [`hlo_iota()`], optionally shifting the starting value via
 #' [`hlo_add()`].
@@ -909,10 +909,13 @@ print.IotaArray <- function(x, ...) {
 #' @title Compare AbstractArray Types
 #' @description
 #' Compare two abstract arrays for type equality.
+#'
+#' An [`RData`] has no data type to compare, so it is an error here, just as
+#' [`dtype()`][tengen::dtype] is. Commit it first, e.g. with [`nv_convert()`].
 #' @param e1 ([`AbstractArray`])\cr
-#'   First array to compare.
+#'   First array to compare. Must not be an [`RData`].
 #' @param e2 ([`AbstractArray`])\cr
-#'   Second array to compare.
+#'   Second array to compare. Must not be an [`RData`].
 #' @return `logical(1)` - `TRUE` if the arrays are equal, `FALSE` otherwise.
 #' @examples
 #' a <- nv_aval("f32", c(2L, 3L))
@@ -934,8 +937,17 @@ eq_type <- function(e1, e2) {
   if (!inherits(e1, "AbstractArray") || !inherits(e2, "AbstractArray")) {
     cli_abort("e1 and e2 must be AbstractArrays")
   }
-  # An `RData` compares as the dtype it would commit to; it has no other.
-  if (peek_dtype(e1) != peek_dtype(e2) || !identical(e1$shape, e2$shape)) {
+  if (is_rdata(e1) || is_rdata(e2)) {
+    cli_abort(
+      c(
+        "{.fn eq_type} is undefined for an {.cls RData}.",
+        i = "An R value has no data type of its own until it is used, so there is nothing to compare.",
+        i = "Give it one explicitly with {.fn nv_convert}."
+      ),
+      call = NULL
+    )
+  }
+  if (dtype(e1) != dtype(e2) || !identical(e1$shape, e2$shape)) {
     return(FALSE)
   }
   TRUE
@@ -1153,7 +1165,7 @@ arr <- function(..., shape = NULL) {
   assert_vector(vals, min.len = 1L)
   nvals <- length(vals)
   if (!is.null(shape) && (nvals != 1) && (prod(shape) != nvals)) {
-    cli_abort("Number of elements is {nvals}, but {.arg shape} is {shape}")
+    cli_abort("Number of elements is {nvals}, but {.arg shape} is {shape_repr(shape)}.")
   }
   array(vals, dim = shape %||% length(vals))
 }
