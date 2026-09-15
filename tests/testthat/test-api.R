@@ -2376,7 +2376,7 @@ describe("nv_quantile selection fast path", {
   # sort; forcing the sort path via an array probs containing a high prob
   # must give identical results.
   it("matches the sort path on random data with NaNs", {
-    set.seed(42)
+    withr::local_seed(42)
     v <- rnorm(101)
     v[sample(101, 30)] <- NaN
     x <- nv_array(v)
@@ -2389,7 +2389,7 @@ describe("nv_quantile selection fast path", {
     }
   })
   it("matches the sort path along a middle dim of a 3-D array", {
-    set.seed(1)
+    withr::local_seed(1)
     a <- array(rnorm(7 * 55 * 6), c(7, 55, 6))
     a[sample(length(a), 500)] <- NaN
     x <- nv_array(a)
