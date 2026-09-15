@@ -30,9 +30,6 @@
   named list with elements `state` and `values` instead of an unnamed pair,
   and `prim_top_k()`, `prim_cummax()` and `prim_cummin()` name theirs
   `values` and `indices`.
-* `nv_quantile()` and `nv_median()` select the needed order statistics with
-  `top_k` instead of a full sort when every requested quantile lies in the
-  lower half of the axis. Results are unchanged.
 * The reductions (`sum()`, `prod()`, `max()`, `min()`, `range()`, `any()`,
   `all()`) now work with multiple data inputs.
 * The default data types for floating point numbers and integers can now be
@@ -62,6 +59,12 @@
 * `nv_floor()`, `nv_ceiling()`, `nv_trunc()` and `nv_round()` return an
   integer array unchanged, like base R does.
 * Improved documentation of API functions and primitives.
+
+## Performance
+
+* `nv_quantile()` and `nv_median()` select the needed order statistics with
+  `top_k` instead of a full sort when every requested quantile lies in the
+  lower half of the axis. Results are unchanged.
 
 ## Bug fixes
 
