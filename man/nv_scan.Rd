@@ -37,9 +37,7 @@ leaf gaining a leading axis of size \code{length}).
 }
 \description{
 Runs a fixed-length loop that threads a carry through \code{body} while
-stacking each step's output into preallocated buffers, like JAX's
-\code{lax.scan}. Built on \code{\link[=nv_while]{nv_while()}} plus \code{\link[=prim_dynamic_slice]{prim_dynamic_slice()}} /
-\code{\link[=prim_dynamic_update_slice]{prim_dynamic_update_slice()}}; no new backend primitive.
+stacking each step's output into preallocated buffers.
 
 At step \code{t}, \code{body} receives the current carry and the step's slice of
 \code{xs} (taken along axis 1, with that unit axis dropped; a 1-D leaf

@@ -2653,9 +2653,7 @@ nv_while <- prim_while
 #' @title Scan (Loop With Per-Step Outputs)
 #' @description
 #' Runs a fixed-length loop that threads a carry through `body` while
-#' stacking each step's output into preallocated buffers, like JAX's
-#' `lax.scan`. Built on [nv_while()] plus [prim_dynamic_slice()] /
-#' [prim_dynamic_update_slice()]; no new backend primitive.
+#' stacking each step's output into preallocated buffers.
 #'
 #' At step `t`, `body` receives the current carry and the step's slice of
 #' `xs` (taken along axis 1, with that unit axis dropped; a 1-D leaf
