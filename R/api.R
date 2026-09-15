@@ -2681,13 +2681,6 @@ nv_while <- prim_while
 #' @return `list(carry = , out = )`: the final carry (same structure as
 #'   `init`) and the stacked outputs (structure of `body`'s `out`, each
 #'   leaf gaining a leading axis of size `length`).
-#' @details
-#' The trip count and all shapes are static. The first iteration is
-#' evaluated once ahead of the loop to learn the output shapes, so
-#' `body` appears twice in the traced graph. Not differentiable
-#' ([prim_while()] has no reverse rule). On the quickr backend the usual
-#' restrictions apply (dtypes f64/i32/bool, dynamic slices of rank
-#' \eqn{\le} 5).
 #' @seealso [nv_while()], [nv_cumsum()] for fixed associative scans.
 #' @examplesIf pjrt::plugins_downloaded()
 #' # cumulative sum along axis 1

@@ -45,14 +45,6 @@ yields a scalar), and must return
 \verb{list(carry = <same structure as init>, out = <arrays to stack>)}.
 The stacked \code{out} buffers gain a new leading axis of size \code{length}.
 }
-\details{
-The trip count and all shapes are static. The first iteration is
-evaluated once ahead of the loop to learn the output shapes, so
-\code{body} appears twice in the traced graph. Not differentiable
-(\code{\link[=prim_while]{prim_while()}} has no reverse rule). On the quickr backend the usual
-restrictions apply (dtypes f64/i32/bool, dynamic slices of rank
-\eqn{\le} 5).
-}
 \examples{
 \dontshow{if (pjrt::plugins_downloaded()) withAutoprint(\{ # examplesIf}
 # cumulative sum along axis 1
