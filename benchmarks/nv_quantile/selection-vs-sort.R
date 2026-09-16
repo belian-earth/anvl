@@ -13,6 +13,9 @@
 
 library(anvl)
 
+# Rscript selection-vs-sort.R [cpu|cuda]
+device <- if (length(commandArgs(TRUE))) commandArgs(TRUE)[1] else "cpu"
+
 time_one <- function(f, x, reps = 5L) {
   f(x)
   f(x)
@@ -35,7 +38,7 @@ for (t in c(31L, 55L, 90L)) {
     shp <- if (axis == 1L) c(t, 512L, 512L) else c(512L, 512L, t)
     a <- array(rnorm(prod(shp)), shp)
     a[sample(length(a), length(a) %/% 5L)] <- NaN
-    x <- nv_array(a, dtype = "f32")
+    x <- nv_array(a, dtype = "f32", device = device)
     for (q in c(0.25, 0.5, 0.9)) {
       selection <- jit(function(x) nv_quantile(x, q, axis = axis, nan_rm = TRUE))
       sort <- jit(function(x) nv_quantile(x, array(c(0.1, 0.9, q)), axis = axis, nan_rm = TRUE))

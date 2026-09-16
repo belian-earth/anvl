@@ -815,7 +815,8 @@ prim_top_k[["reverse"]] <- rule_reverse(function(inputs, outputs, grads, params,
   }
   x <- inputs[[1L]]
   grad_values <- grads[[1L]]
-  indices <- outputs[[2L]]
+  # A values-only forward did not keep the indices; recover them here.
+  indices <- if (params$indices) outputs[[2L]] else prim_top_k(x, k = params$k)[[2L]]
   full_shape <- shape(x)
   rank <- length(full_shape)
   batching <- seq_len(rank - 1L)

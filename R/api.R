@@ -3317,7 +3317,7 @@ nv_top_k <- function(x, k, axis = NULL, with_indices = FALSE) {
   if (axis != rank) {
     perm <- seq_len(rank)
     perm[c(axis, rank)] <- c(rank, axis)
-    out <- prim_top_k(prim_transpose(x, permutation = perm), k = k)
+    out <- prim_top_k(prim_transpose(x, permutation = perm), k = k, indices = with_indices)
     values <- prim_transpose(out$values, permutation = perm)
     if (with_indices) {
       indices <- prim_transpose(out$indices, permutation = perm)
@@ -3326,7 +3326,7 @@ nv_top_k <- function(x, k, axis = NULL, with_indices = FALSE) {
       values
     }
   } else {
-    out <- prim_top_k(x, k = k)
+    out <- prim_top_k(x, k = k, indices = with_indices)
     if (with_indices) out else out$values
   }
 }
