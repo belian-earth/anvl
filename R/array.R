@@ -39,6 +39,11 @@
 #'
 #' @param data (any)\cr
 #'   `integer()`, `double()`, or `logical()` scalar, vector, or array.
+#'   Alternatively a `raw()` vector holding the native little-endian byte
+#'   payload of `prod(shape)` elements of `dtype`; both `dtype` and `shape`
+#'   are then required (only supported on the `"pjrt"` backend).
+#'   Raw payloads are read in column-major element order, or row-major
+#'   with `byrow = TRUE`.
 #' @param dtype (`NULL` | `character(1)` | [`DataType`])\cr
 #'   One of `r roxy_dtypes()` or a [`tengen::DataType`].
 #'   The default (`NULL`) uses the data type the R value takes (see
@@ -52,6 +57,8 @@
 #'   The output shape of the array.
 #'   The default (`NULL`) is to infer it from the data if possible.
 #'   Note that [`nv_array`] interprets length 1 vectors as having shape `(1)`.
+#'   Empty data has no shape to infer -- `0`, `c(2, 0)` and `c(0, 3)` all hold
+#'   no elements -- so `shape` is required there.
 #'   To create a "scalar" with no axes (shape `()`), use [`nv_scalar`] or explicitly specify `shape = c()`.
 #' @param byrow (`logical(1)`)\cr
 #'   When constructing from an R object and the result has at least two
@@ -158,7 +165,23 @@ nv_array <- function(
   if (!is.null(shape)) {
     shape <- as.integer(shape)
   }
-  if (byrow) {
+  is_raw_payload <- is.raw(data)
+  if (is_raw_payload) {
+    if (is.null(dtype)) {
+      cli_abort("{.arg dtype} must be provided when {.arg data} is a raw vector.")
+    }
+    if (is.null(shape)) {
+      cli_abort("{.arg shape} must be provided when {.arg data} is a raw vector.")
+    }
+  } else if (is.null(shape) && is.null(dim(data)) && length(data) == 0L) {
+    # A zero-length vector does not say which axis is empty, so there is
+    # nothing to infer: `0`, `c(2, 0)` and `c(0, 3)` all hold no elements.
+    cli_abort(c(
+      "{.arg shape} must be provided when {.arg data} is empty.",
+      i = "A zero-length vector does not say which axis is empty, e.g. {.code shape = 0L} or {.code shape = c(2L, 0L)}."
+    ))
+  }
+  if (byrow && !is_raw_payload) {
     fill_shape <- shape %||% (if (!is.null(dim(data))) as.integer(dim(data)) else as.integer(length(data)))
     if (length(fill_shape) >= 2L) {
       # Fill column-major into the reversed shape, then permute axes back —
@@ -170,14 +193,14 @@ nv_array <- function(
     # A constant of the trace: it belongs to the backend being traced for, and
     # materializes at the defaults the trace is pinned to.
     dtype <- resolve_default_dtype(data, dtype)
-    return(globals$backends[["plain"]]$new_data(data, dtype, shape, device))
+    return(globals$backends[["plain"]]$new_data(data, dtype, shape, device, row_major = byrow))
   }
   backend <- active_backend()
   if (is_device(device)) {
     check_device_backend(device, backend)
   }
   dtype <- resolve_default_dtype(data, dtype, current_default_dtypes())
-  globals$backends[[backend]]$new_data(data, dtype, shape, device)
+  globals$backends[[backend]]$new_data(data, dtype, shape, device, row_major = byrow)
 }
 
 #' @title Convert to AnvlArray
