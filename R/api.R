@@ -3290,8 +3290,9 @@ nv_argsort <- function(x, axis = NULL, decreasing = FALSE, stable = FALSE) {
 #' Returns the `k` largest values along an axis, sorted in decreasing order.
 #' @template param_x
 #' @param k (`integer(1)`)\cr
-#'   Number of top elements to return. Must satisfy
-#'   `1 <= k <= shape(x)[axis]`.
+#'   Number of top elements to return. Must be a whole number satisfying
+#'   `1 <= k <= shape(x)[axis]`; a fractional or logical `k` is refused
+#'   rather than truncated.
 #' @param axis (`integer(1)` | `NULL`)\cr
 #'   Axis along which to take the top `k`. Negative values count from the
 #'   end, i.e. `-1` refers to the last axis. If `NULL` (default),
@@ -3325,8 +3326,15 @@ nv_top_k <- function(x, k, axis = NULL, with_indices = FALSE) {
     cli_abort("{.arg x} must have at least one axis to take the top {.arg k} along, but it is a scalar.")
   }
   axis <- resolve_axis(axis %||% rank, rank, arg = "axis")
+  # Check before coercing: `as.integer()` first would silently truncate a
+  # fractional `k` and accept a logical one, where `prim_top_k()` refuses both.
+  if (!checkmate::test_int(k, lower = 1L, upper = shape(x)[axis])) {
+    cli_abort(c(
+      "{.arg k} must be a single whole number between 1 and the size of {.arg axis}.",
+      x = "Axis {axis} has size {shape(x)[axis]}, and {.arg k} is {.val {k}}."
+    ))
+  }
   k <- as.integer(k)
-  assert_int(k, lower = 1L, upper = shape(x)[axis])
 
   # prim_top_k operates on the last axis; transpose axis to last and back.
   if (axis != rank) {
@@ -3664,8 +3672,10 @@ nv_argmin <- function(x, axis = NULL, drop = TRUE, nan_rm = FALSE) {
 #' `[batch, in_channels, width]`, `weight` is
 #' `[out_channels, in_channels / groups, kW]`, output is
 #' `[batch, out_channels, out_w]`. Symmetric zero padding.
-#' @param x ([`arrayish`])\cr `[N, C_in, W]`.
+#' @param x ([`arrayish`])\cr `[N, C_in, W]`. `x` and `weight` are
+#'   [promoted to a common data type][nv_promote_to_common()].
 #' @param weight ([`arrayish`])\cr `[C_out, C_in / groups, kW]`.
+#'   Promoted together with `x`.
 #' @param stride,padding,dilation (`integer()`)\cr Length 1.
 #' @param groups (`integer(1)`)\cr Grouped/depthwise convolution.
 #' @param precision (`character(1)`)\cr `"highest"`, `"high"` or `"default"`.
@@ -3682,8 +3692,10 @@ nv_conv1d <- function(x, weight, stride = 1L, padding = 0L, dilation = 1L, group
 #' `[batch, in_channels, height, width]`, `weight` is
 #' `[out_channels, in_channels / groups, kh, kw]`, output is
 #' `[batch, out_channels, out_h, out_w]`. Symmetric zero padding.
-#' @param x ([`arrayish`])\cr `[N, C_in, H, W]`.
+#' @param x ([`arrayish`])\cr `[N, C_in, H, W]`. `x` and `weight` are
+#'   [promoted to a common data type][nv_promote_to_common()].
 #' @param weight ([`arrayish`])\cr `[C_out, C_in / groups, kH, kW]`.
+#'   Promoted together with `x`.
 #' @param stride (`integer()`)\cr Length 1 or 2.
 #' @param padding (`integer()`)\cr Symmetric padding, length 1 or 2.
 #' @param dilation (`integer()`)\cr Kernel dilation, length 1 or 2.
@@ -3713,8 +3725,11 @@ nv_conv3d <- function(x, weight, stride = 1L, padding = 0L, dilation = 1L, group
 }
 
 .nv_convnd <- function(x, weight, n, stride, padding, dilation, groups, precision) {
-  # `x`/`weight` are left as raw arrayish; prim_convolution's machinery
-  # (graph_desc_add -> maybe_box_arrayish) coerces them.
+  # The `nv_*` layer promotes across data types; `prim_convolution()` would
+  # require `x` and `weight` to agree already, and would name its own operand.
+  args <- as_anvl_arrays(x = x, weight = weight, .promote = promotion_common())
+  x <- args$x
+  weight <- args$weight
   stride <- .nv_conv_vec(stride, n, "stride")
   pad <- .nv_conv_vec(padding, n, "padding")
   dilation <- .nv_conv_vec(dilation, n, "dilation")
