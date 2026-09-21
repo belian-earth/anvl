@@ -48,10 +48,10 @@ Suggests:
 Additional_repositories:
     https://r-xla.r-universe.dev
 Remotes:
-    r-xla/pjrt,
-    r-xla/tengen,
-    r-xla/stablehlo,
-    r-xla/xlamisc
+    belian-earth/pjrt@d6b952d2e450c356cbafeade2db1cfa5362786f8,
+    r-xla/tengen@31357e3d71f6a8ee66fff2cd4e1a1ec1ac68076f,
+    r-xla/stablehlo@266540fe0d2510eb2e72958b037872ac51d137c3,
+    r-xla/xlamisc@b2249754ef1c9febcf577e81b4684d250395f1b6
 VignetteBuilder:
     knitr
 Config/testthat/edition: 3
