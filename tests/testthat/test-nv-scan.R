@@ -111,6 +111,22 @@ describe("nv_scan", {
     expect_equal(as.numeric(as.array(res$carry)), 7)
   })
 
+  it("nests: a scan inside a scan body", {
+    # row-wise cumulative sums, then a running total of the row totals
+    m <- matrix(as.numeric(1:6), 2L, 3L)
+    res <- nv_scan(
+      init = nv_scalar(0),
+      body = function(carry, row) {
+        inner <- nv_scan(nv_scalar(0), cumsum_body, xs = row)
+        total <- carry + inner$carry
+        list(carry = total, out = inner$out)
+      },
+      xs = nv_array(m)
+    )
+    expect_equal(as.array(res$out), t(apply(m, 1L, cumsum)))
+    expect_equal(as.numeric(as.array(res$carry)), sum(m))
+  })
+
   it("works under jit", {
     f <- jit(function(x) nv_scan(nv_scalar(0), cumsum_body, xs = x)$out)
     out <- f(nv_array(c(1, 2, 3, 4)))

@@ -743,10 +743,10 @@ prim_scan[["stablehlo"]] <- function(..., body_graph, length, reverse, n_carry, 
 
   # Both regions declare the full state as their inputs, in state order.
   declare_state <- function() {
-    i <- hlo_input("i", "i32")
-    rest <- lapply(seq_along(state)[-1L], function(k) {
-      tt <- state[[k]]$value_type$type
-      hlo_input(paste0("s", k), as.character(tt$dtype), shape(tt))
+    i <- region_input("i32")
+    rest <- lapply(state[-1L], function(value) {
+      tt <- value$value_type$type
+      region_input(as.character(tt$dtype), shape(tt))
     })
     list(i = i, rest = rest)
   }
